@@ -1,0 +1,182 @@
+```{r}
+setwd("C:/Users/zhaoi2/Desktop/project") 
+source("./Supplemental/check_packages.R")
+source("./Supplemental/custom_cormatrix.R")  # use to load correlation matrix function
+check_packages(c("optimx","metafor","stringr","Hmisc","ggpubr","readxl","xlsx","sas7bdat","readstata13","gridExtra","RColorBrewer","sjPlot",
+                 "grid","lme4","ggrepel","tidyr","networkD3","dplyr","ggplot2"))
+
+# Name estrogens
+estrogen_names = c("E1", "E2", "4OHE1", "4ME1","4ME2","2OHE1","3ME1" ,"2OHE2","2ME1","2ME2","16aE1","17epiE3","E3","16KE2","16epiE3") 
+estrogen_names_long = c("Estrone (E1)", "Estradiol (E2)", "4-Hydroxyestrone (4OHE1)", "4-Methoxyestrone (4ME1)","4-Methoxyestradiol (4ME2)","2-Hydroxyestrone (2OHE1)","2-Hydroxyestrone-3-methyl ether (3ME1)" ,"2-Hydroxyestradiol (2OHE2)","2-Methoxyestrone (2ME1)","2-Methoxyestradiol (2ME2)","16a-Hydroxyestrone (16aE1)","17-Epiestriol (17epiE3)","Estriol (E3)","16-Ketoestradiol (16KE2)","16-Epiestriol (16epiE3)")
+estrogen_names_long2 = c("Estrone", "Estradiol", "4-Hydroxyestrone", "4-Methoxyestrone","4-Methoxyestradiol","2-Hydroxyestrone","2-Hydroxyestrone-3-methyl ether" ,"2-Hydroxyestradiol","2-Methoxyestrone","2-Methoxyestradiol","16a-Hydroxyestrone","17-Epiestriol","Estriol","16-Ketoestradiol","16-Epiestriol")
+estrogen_names_df = data.frame(Estrogen = estrogen_names, Nomenclature = estrogen_names_long2)
+t.estrogen_names = paste0("t.",estrogen_names)
+
+#load("./data/df_all.RDA")
+```
+
+
+Analyze 20 rep from korea snu. NEED TO COPY CREATININE FROM TIDY DATA TO STANDARDIZE
+```{r}
+df.batch = list()  # will store all batches into one list of multiple dataframes
+for (i in 1:max.batch){  # reads in batches 1-4
+  df.batch[[i]] = as.data.frame(read_excel(paste0("./data/estrogen_new/Batch_",as.character(i), "_rev2.xlsm"),na="NF",skip=2))    # reads in batches starting row 3, replacing NF with NA
+  df.batch[[i]]$batch.num = i   # makes a new column to identify batch
+  colnames(qc.df[[i]])[1:4] = c("sample.id","customer.id","volume","injection")   # renames first 4 columns to standardize format
+}
+df.batch = bind_rows(df.batch)  %>% group_by(customer.id) %>% filter(n()>1) %>% filter(batch.num != 8) %>% filter(!(customer.id %in% c("0121","0080"))) %>% # subsets to duplicates
+  mutate(ID = rep(c("A","D","A","D", # batch 1
+                    "B","B","D","D", # batch 2
+                    "E","B","B","E", # batch 3
+                    "D","E","E","D",  # batch 4
+                    "E","E","B","B", # batch 5
+                    "B","D","B","D", # batch 6
+                    "A","A","B","B", # batch 7
+                    "B","B","E","E"  # batch 9
+                    
+                    ),2) )
+  
+
+df.batch[,estrogen_names] = sweep(df.batch[ ,estrogen_names],df.batch[,"injection"],MARGIN=1,"/")   # Divides all estrogens by injection
+
+# Converts estrogen pg/uL to pmol/L
+  df.batch$`16KE2`   =  df.batch$`16KE2`    *(1e6/ 286.36548)
+  df.batch$E3        =  df.batch$E3         *(1e6/288.38136)
+  df.batch$`16aE1`   =  df.batch$`16aE1`    *(1e6/ 286.36548)
+  df.batch$`16epiE3` =  df.batch$`16epiE3`  *(1e6/ 288.38136)
+  df.batch$`17epiE3` =  df.batch$`17epiE3`  *(1e6/ 288.38136)
+  df.batch$`3ME1`    =  df.batch$`3ME1`     *(1e6/ 300.39106)
+  df.batch$`2ME1`    =  df.batch$`2ME1`     *(1e6/300.39106)
+  df.batch$`4ME1`    =  df.batch$`4ME1`     *(1e6/ 300.39106)
+  df.batch$`2ME2`    =  df.batch$`2ME2`     *(1e6/302.40794)
+  df.batch$E1        =  df.batch$E1         *(1e6/ 270.36608)
+  df.batch$`4ME2`    =  df.batch$`4ME2`     *(1e6/302.40794)
+  df.batch$E2        =  df.batch$E2         *(1e6/ 272.38196)
+  df.batch$`2OHE1`   =  df.batch$`2OHE1`    *(1e6/ 286.36548)
+  df.batch$`2OHE2`   =  df.batch$`2OHE2`    *(1e6/286.38136)
+  df.batch$`4OHE1`   =  df.batch$`4OHE1`    *(1e6/286.36548)
+
+
+# PUT IN CREATININE TO STANDARDIZE
+
+
+
+# With log transform
+# qc.df = as.data.frame(read_xlsx("./data/qc_analysis.xlsx",na="")) %>%
+#   filter(!(ID %in% c("A","B","D","E"))) %>%
+#   gather(Estrogen,Concentration,estrogen_names) %>%
+#   mutate(batch.num = as.factor(batch.num), ID = as.factor(ID), Estrogen = factor(as.factor(Estrogen),levels=estrogen_names))
+
+qc.stats = as.data.frame(read_xlsx("./data/qc_analysis.xlsx",na="")) %>%
+  filter(!(ID %in% c("A","B","D","E"))) %>%
+  gather(Estrogen,Concentration,paste0("s.",estrogen_names)) %>%
+  mutate(batch.num = as.factor(batch.num), ID = as.factor(ID), Concentration = log(Concentration+1)) %>% 
+  group_by(Estrogen) %>% 
+  summarize(s2_between_subject = VarCorr(lmer(Concentration ~ 1+ (1|ID) + (1|batch.num)))$ID[1],           # between subject variance
+            s2_between_batch = VarCorr(lmer(Concentration ~ 1+ (1|ID) + (1|batch.num)))$batch.num[1] ,          # between batch variance
+            s2_within_subject = (attr(VarCorr(lmer(Concentration ~ 1+ (1|ID) + (1|batch.num))), "sc"))^2 ,    # within subject variance
+            mean_concentration = mean(Concentration,na.rm=TRUE)) %>%
+  mutate( 'ICC (%)' = round(  100*(s2_between_subject/(s2_between_subject+s2_within_subject+s2_between_batch)), 1) ,
+          'CV (%)' = round( 100*(sqrt(s2_within_subject + s2_between_batch)/mean_concentration),1))
+
+# sjPlot::tab_df(qc.stats %>% mutate(s2_between_subject = round(s2_between_subject,2),
+#                                 s2_between_batch = round(s2_between_batch,2),
+#                                 s2_within_subject = round(s2_within_subject,2),
+#                                 mean_concentration = round(mean_concentration,2)) ,show.rownames=FALSE)
+
+qc.stats2 = qc.stats %>% select(Estrogen,'CV (%)', 'ICC (%)') %>% rename(cv = 'CV (%)', icc = 'ICC (%)')
+estrogen_max = qc.df %>% group_by(Estrogen) %>% summarise(max = max(Concentration,na.rm=TRUE)) %>% 
+  inner_join(qc.stats2,by="Estrogen") %>% mutate(Estrogen = factor(as.factor(Estrogen), levels=estrogen_names))
+blank = data.frame(Estrogen = rep(estrogen_max$Estrogen,2), x=0,y=c(0-estrogen_max$max/15,estrogen_max$max + 2*estrogen_max$max)) %>% arrange(Estrogen)
+
+
+ggplot(qc.df,aes(x=ID,y=Concentration)) +
+  geom_jitter(aes(color=batch.num,shape=batch.num),size=4,alpha=0.8, width=0.2,height=0,show_guide = TRUE) +
+  scale_shape_manual(values=1:nlevels(qc.df$batch.num))+
+  theme_classic() +  
+  geom_vline(data = data.frame(Estrogen= sort(rep(unique(qc.df$Estrogen),length(unique(qc.df$ID)))), id.num=rep(1:length(unique(qc.df$ID)),length(unique(qc.df$Estrogen)))),
+             aes(xintercept=id.num),color="grey10",linetype="dotted")+
+  scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),labels = scales::trans_format("log10", scales::math_format(10^.x))) +
+  ylab("Estrogen metabolite concentration (pg) in 66.66 uL urine injection")+
+  xlab("ID")+ 
+  labs(color='Batch') +
+  labs(shape='Batch') + 
+  geom_label(data=estrogen_max, aes(2.75,2.6*max,label=paste0("CV=",as.character(cv),"%","\n","ICC=",as.character(icc),"%"  )),fontface = "bold",size=5)+
+  geom_blank(data = blank, aes(x = x, y = y))+
+  facet_wrap(~ Estrogen,scales="free_y",ncol=5) +
+  theme(strip.text.x = element_text(size = 22.5,face="bold"), 
+        axis.text.x = element_text(size=7.5, face="bold",angle = 50, hjust = 1), 
+        axis.title = element_text(size=15,face="bold"),
+        axis.text.y =  element_text(size=15, face="bold"))
+```
+
+
+
+Analyze 4 QCs A B D E
+```{r}
+
+qc.df = as.data.frame(read_xlsx("./data/qc_analysis.xlsx",na="")) %>% 
+  filter((ID %in% c("A","B","D","E"))) %>%
+  mutate(batch.num=as.character(batch.num)) %>%
+  gather(Estrogen,Concentration,estrogen_names) %>%
+  mutate(batch.num = factor(as.factor(batch.num),levels = as.character(seq(1:16))), Estrogen = factor(as.factor(Estrogen),levels=estrogen_names))
+
+
+qc.stats = as.data.frame(read_xlsx("./data/qc_analysis.xlsx",na="")) %>%
+  filter(!(ID %in% c("A","B","D","E"))) %>%
+  gather(Estrogen,Concentration,estrogen_names) %>%
+  mutate(batch.num = as.factor(batch.num), ID = as.factor(ID), Concentration = log(Concentration+1)) %>% 
+  group_by(Estrogen) %>% 
+  summarize(s2_between_subject = VarCorr(lmer(Concentration ~ 1+ (1|ID) + (1|batch.num)))$ID[1],           # between subject variance
+            s2_between_batch = VarCorr(lmer(Concentration ~ 1+ (1|ID) + (1|batch.num)))$batch.num[1] ,          # between batch variance
+            s2_within_subject = (attr(VarCorr(lmer(Concentration ~ 1+ (1|ID) + (1|batch.num))), "sc"))^2 ,    # within subject variance
+            mean_concentration = mean(Concentration,na.rm=TRUE)) %>%
+  mutate( icc = round(  100*(s2_between_subject/(s2_between_subject+s2_within_subject+s2_between_batch)), 1) ,
+          cv = round( 100*(sqrt(s2_within_subject + s2_between_batch)/mean_concentration),1))
+
+estrogen_max = qc.df %>% group_by(Estrogen) %>% summarise(max = max(Concentration,na.rm=TRUE)) %>% 
+  inner_join(qc.stats,by="Estrogen") %>% mutate(Estrogen = factor(as.factor(Estrogen), levels=estrogen_names))
+blank = data.frame(Estrogen = rep(estrogen_max$Estrogen,2), x=0,y=c(0-estrogen_max$max/15,estrogen_max$max + 2*estrogen_max$max)) %>% arrange(Estrogen)
+
+
+estrogen_max = qc.df %>% group_by(Estrogen) %>% summarise(max = max(Concentration,na.rm=TRUE)) %>% 
+  inner_join(qc.stats,by="Estrogen") %>% mutate(Estrogen = factor(as.factor(Estrogen), levels=estrogen_names))
+ 
+qc_outliers = qc.df %>% group_by(Estrogen,ID) %>% 
+  mutate(log.Concentration = log(Concentration),
+log.mean = mean(log.Concentration,na.rm=TRUE),
+log.median = median(log.Concentration,na.rm=TRUE),
+log.sd = sd(log.Concentration,na.rm=TRUE),
+log.sd.above.mean = round((log.Concentration-log.mean)/log.sd,2),
+mean = mean(Concentration,na.rm=TRUE),
+median = median(Concentration,na.rm=TRUE),
+Estrogen = factor(as.factor(Estrogen),levels=estrogen_names)) %>%
+  arrange(desc(abs(log.sd.above.mean)))
+
+
+blank = data.frame(Estrogen = rep(estrogen_max$Estrogen,2), x=0,y=c(0-estrogen_max$max/15,estrogen_max$max + 2*estrogen_max$max)) %>% arrange(Estrogen)
+
+
+ggplot(qc.df,aes(x=ID,y=Concentration)) +
+  stat_boxplot(geom ='errorbar',alpha=0.5) + 
+  geom_boxplot(color="grey60",outlier.shape = NA,alpha=0.25) +
+  geom_jitter(aes(color=batch.num,shape=batch.num),size=3.5,alpha=0.6,width=0.3,height=0,show_guide = TRUE) +
+  scale_shape_manual(values=1:nlevels(qc.df$batch.num))+
+  theme_classic() +  
+  geom_vline(data = data.frame(Estrogen= sort(rep(unique(qc.df$Estrogen),length(unique(qc.df$ID)))), id.num=rep(1:length(unique(qc.df$ID)),length(unique(qc.df$Estrogen)))),
+             aes(xintercept=id.num),color="grey10",linetype="dotted")+
+  scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),labels = scales::trans_format("log10", scales::math_format(10^.x))) +
+  ylab("Estrogen metabolite concentration (pg) in 66.66 uL urine injection")+
+  xlab("ID")+ 
+  labs(color='Batch') +
+  labs(shape='Batch') + 
+  geom_text_repel(data=qc_outliers %>% filter(log.sd.above.mean >=1.96), aes(x=ID,y=Concentration,label=customer.id))+
+  geom_label(data=estrogen_max, aes(0.8,2.6*max,label=paste0("CV=",as.character(cv),"%","\n","ICC=",as.character(icc),"%"  )),fontface = "bold",size=5)+
+  geom_blank(data = blank, aes(x = x, y = y))+
+  facet_wrap(~ Estrogen,scales="free",ncol=5) +
+  theme(strip.text.x = element_text(size = 22.5,face="bold"), 
+        axis.text.x = element_text(size=7.5, face="bold"), 
+        axis.title = element_text(size=15,face="bold"),
+        axis.text.y =  element_text(size=15, face="bold"))
+```
+

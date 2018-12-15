@@ -1,0 +1,37 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+setwd("C:/Users/zhaoi2/Desktop/project") 
+source("./Supplemental/check_packages.R")
+source("./Supplemental/custom_cormatrix.R")  # use to load correlation matrix function
+check_packages(c("optimx","stringr","Hmisc","ggpubr","readxl","xlsx","sas7bdat","readstata13","gridExtra","RColorBrewer","sjPlot",
+                 "grid","lme4","ggrepel","tidyr","networkD3","dplyr","ggplot2"))
+
+# Name estrogens
+estrogen_names = c("E1", "E2", "4OHE1", "4ME1","4ME2","2OHE1","3ME1" ,"2OHE2","2ME1","2ME2","16aE1","17epiE3","E3","16KE2","16epiE3") 
+estrogen_names_long = c("Estrone (E1)", "Estradiol (E2)", "4-Hydroxyestrone (4OHE1)", "4-Methoxyestrone (4ME1)","4-Methoxyestradiol (4ME2)","2-Hydroxyestrone (2OHE1)","2-Hydroxyestrone-3-methyl ether (3ME1)" ,"2-Hydroxyestradiol (2OHE2)","2-Methoxyestrone (2ME1)","2-Methoxyestradiol (2ME2)","16a-Hydroxyestrone (16aE1)","17-Epiestriol (17epiE3)","Estriol (E3)","16-Ketoestradiol (16KE2)","16-Epiestriol (16epiE3)")
+estrogen_names_long2 = c("Estrone", "Estradiol", "4-Hydroxyestrone", "4-Methoxyestrone","4-Methoxyestradiol","2-Hydroxyestrone","2-Hydroxyestrone-3-methyl ether" ,"2-Hydroxyestradiol","2-Methoxyestrone","2-Methoxyestradiol","16a-Hydroxyestrone","17-Epiestriol","Estriol","16-Ketoestradiol","16-Epiestriol")
+estrogen_names_df = data.frame(Estrogen = estrogen_names, Nomenclature = estrogen_names_long2)
+t.estrogen_names = paste0("t.",estrogen_names)
+
+load("./data/df_all.RDA")
+```
+
+# Tally Covariates Overall
+```{r}
+df %>% group_by(origin,alcohol) %>% summarize(n())
+df %>% group_by(origin,smoking) %>% summarize(n())
+df %>% group_by(origin,relativegc) %>% summarize(n())
+df %>% group_by(origin,education) %>% summarize(n())
+```
+
+# Tally Covariates by case status
+```{r}
+as.data.frame(df %>% group_by(origin,case,alcohol) %>% summarize(n()))
+as.data.frame(df %>% group_by(origin,case,smoking) %>% summarize(n()))
+as.data.frame(df %>% group_by(origin,case,relativegc) %>% summarize(n()))
+as.data.frame(df %>% group_by(origin,case,education) %>% summarize(n()))
+```

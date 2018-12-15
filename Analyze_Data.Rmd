@@ -1,0 +1,429 @@
+
+
+
+```{r}
+setwd("C:/Users/zhaoi2/Desktop/project") 
+source("./Supplemental/check_packages.R")
+source("./Supplemental/custom_cormatrix.R")  # use to load correlation matrix function
+check_packages(c("ggthemes","optimx","metafor","stringr","Hmisc","ggpubr","readxl","xlsx","sas7bdat","readstata13","gridExtra","RColorBrewer","sjPlot",
+                 "grid","lme4","ggrepel","tidyr","networkD3","dplyr","ggplot2"))
+
+# Name estrogens
+estrogen_names = c("E1", "E2", "4OHE1", "4ME1","4ME2","2OHE1","3ME1" ,"2OHE2","2ME1","2ME2","16aE1","17epiE3","E3","16KE2","16epiE3") 
+estrogen_names_long = c("Estrone (E1)", "Estradiol (E2)", "4-Hydroxyestrone (4OHE1)", "4-Methoxyestrone (4ME1)","4-Methoxyestradiol (4ME2)","2-Hydroxyestrone (2OHE1)","2-Hydroxyestrone-3-methyl ether (3ME1)" ,"2-Hydroxyestradiol (2OHE2)","2-Methoxyestrone (2ME1)","2-Methoxyestradiol (2ME2)","16alpha-Hydroxyestrone (16aE1)","17-Epiestriol (17epiE3)","Estriol (E3)","16-Ketoestradiol (16KE2)","16-Epiestriol (16epiE3)")
+estrogen_names_long2 = c("Estrone", "Estradiol", "4-Hydroxyestrone", "4-Methoxyestrone","4-Methoxyestradiol","2-Hydroxyestrone","2-Hydroxyestrone-3-methyl ether" ,"2-Hydroxyestradiol","2-Methoxyestrone","2-Methoxyestradiol","16alpha-Hydroxyestrone","17-Epiestriol","Estriol","16-Ketoestradiol","16-Epiestriol")
+estrogen_names_df = data.frame(Estrogen = estrogen_names, Nomenclature = estrogen_names_long2)
+t.estrogen_names = paste0("t.",estrogen_names)
+
+country_list = c("Germany","Japan","Korea (KMCC)", "Iran","Korea (SNU)")
+
+load("./data/df_all.RDA")
+```
+
+
+Correlation matrix of all Estrogens with covariates
+```{r}
+df.cor = df %>% select(paste0("s.",estrogen_names), case, age, bmi, alcohol, smoking, education, relativegc, age.menarche,age.menopause,year.fertility )
+
+names(df.cor)[1:15] = estrogen_names
+
+
+custom_cormatrix(df.cor, cor.method="spearman",log.transform=TRUE)
+```
+
+
+boxplot of all estrogen concentrations by origin comparing cases vs controls
+```{r}
+###################################
+a = df %>% select(paste0("s.",estrogen_names), origin,status) %>% filter(!(is.na(status))) %>%
+  #filter(origin %in% c("Germany", "Japan", "Korea (KMCC)", "Iran", "Korea (SNU)")) %>% 
+  mutate(status=as.factor(status)) 
+colnames(a)[1:15] = estrogen_names
+a = a %>% gather(Estrogen,Concentration,1:15)  %>% mutate(Estrogen = factor(as.factor(Estrogen),levels = estrogen_names))
+
+ggplot(a, aes(x=origin,y=Concentration, fill=status)) +
+  geom_boxplot(color="black",alpha=0.7) +
+  theme_classic()+
+  scale_fill_brewer("BrBG")+
+  stat_compare_means(aes(group = status), method="wilcox.test",label.y=3, label= "p.format")+
+  scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),
+              labels = scales::trans_format("log10", scales::math_format(10^.x))) +
+facet_wrap(~ Estrogen, scales="free",ncol=5) +
+  xlab("")+
+  ylab("")+
+    theme(strip.text.x = element_text(size = 22.5,face="bold"), axis.text.x =  element_text(size=8,face="bold"), axis.text.y =  element_text(size=8,face="bold"), legend.title=element_blank()) 
+```
+
+
+boxplot of all estrogen concentratons comparing cases vs controls
+```{r}
+a = df %>% select(paste0("s.",estrogen_names), origin,status) %>% filter(!(is.na(status))) %>%
+  filter(origin %in% c("Germany", "Japan", "Korea (KMCC)", "Iran", "Korea (SNU)")) %>% mutate(status=as.factor(status)) 
+colnames(a)[1:15] = estrogen_names
+a = a %>% gather(Estrogen,Concentration,1:15)  %>% mutate(Estrogen = factor(as.factor(Estrogen),levels = rev(c(estrogen_names))))
+
+ggplot(a, aes(x=Estrogen,y=Concentration,fill=status))+
+    geom_boxplot() +
+  scale_fill_brewer("BrBG")+
+    theme_classic()+
+  scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),labels = scales::trans_format("log10", scales::math_format(10^.x))) +
+    ylab("Concentration (pmol/mg creatinine)")+
+  xlab("") +
+  coord_flip()+
+    #  geom_point(data = a %>% group_by(Estrogen) %>% summarize(median=median(Concentration,na.rm=TRUE)), aes(x=Estrogen,y=median,fill=NA), shape= 5,size = 2, color = "black")+
+    theme(axis.title = element_text(size=15,face="bold"), axis.text.y =  element_text(size=15, face="bold"), axis.text.x =  element_text(size=15, face="bold"),
+          legend.title=element_blank(),
+          legend.position=c(0.91,0.05), legend.background = element_rect(color = "black", size = 1, linetype = "solid"))  +
+  guides(fill = guide_legend(reverse = TRUE))
+```
+
+
+
+Meta analysis random effect where estrogen tertile is numeric 
+```{r}
+# random effect adjused for age
+country.df = list()
+model1.coef= list()
+
+for (j in 1:4){  # change to 1:5
+country.df[[j]] = df %>% filter(origin==country_list[j]) %>% select(origin,case,t.estrogen_names,age,bmi,alcohol,smoking,relativegc,education)  
+model1.coef[[j]] = data.frame(origin=country_list[j],estrogen = c(estrogen_names),estimate=rep(NA,15), variance=rep(NA,15), lower = rep(NA,15), upper = rep(NA,15))
+
+if (j==1){ range=c(1,2,4:15)} else{ range=1:15  }
+
+ for (k in range){
+ model = summary(glm(as.formula(paste0("case", " ~ ", (paste(t.estrogen_names[k], "age", sep="+")))), data=country.df[[j]],  family=binomial(link="logit")))$coef
+ model1.coef[[j]]$estimate[k] = model[2,1]
+ model1.coef[[j]]$variance[k] = (model[2,2])^2
+ model1.coef[[j]]$lower[k] = model[2,1]-1.96*model[2,2]
+ model1.coef[[j]]$upper[k] = model[2,1]+1.96*model[2,2]
+ }
+}
+model1.coef = bind_rows(model1.coef) %>% mutate(variance = ifelse(variance>1000,NA,variance))
+
+meta.model1.coef.cohort = data.frame(origin="Cohort Random Effect",estrogen = estrogen_names,estimate=rep(NA,15), variance=rep(NA,15),lower = rep(NA,15), upper = rep(NA,15))
+# for cohort
+for (i in 1:15){
+data = model1.coef %>% filter(origin %in% c("Germany", "Korea (KMCC)","Iran")) %>%filter(estrogen==estrogen_names[i])
+model = rma(yi=data$estimate,vi=data$variance,method="REML")   # random effect model meta analysis
+meta.model1.coef.cohort$estimate[i] = coef(model)
+meta.model1.coef.cohort$variance[i] = (model$se)^2
+meta.model1.coef.cohort$lower[i] = meta.model1.coef.cohort$estimate[i] - 1.96*model$se
+meta.model1.coef.cohort$upper[i] = meta.model1.coef.cohort$estimate[i] + 1.96*model$se
+}
+
+meta.model1.coef.casecontrol = data.frame(origin="Case Control Random Effect",estrogen = estrogen_names,estimate=rep(NA,15), variance=rep(NA,15),lower = rep(NA,15), upper = rep(NA,15))
+# for case control
+for (i in 1:15){
+data = model1.coef %>% filter(origin %in% c("Japan", "Korea (SNU)")) %>%filter(estrogen==estrogen_names[i])
+model = rma(yi=data$estimate,vi=data$variance,method="REML")   # random effect model meta analysis
+meta.model1.coef.casecontrol$estimate[i] = coef(model)
+meta.model1.coef.casecontrol$variance[i] = (model$se)^2
+meta.model1.coef.casecontrol$lower[i] = meta.model1.coef.casecontrol$estimate[i] - 1.96*model$se
+meta.model1.coef.casecontrol$upper[i] = meta.model1.coef.casecontrol$estimate[i] + 1.96*model$se
+}
+
+
+RE.model1.combined = bind_rows(meta.model1.coef.cohort,meta.model1.coef.casecontrol)
+meta.model1.coef = data.frame(origin="Overall Random Effect",estrogen = estrogen_names,estimate=rep(NA,15), variance=rep(NA,15),lower = rep(NA,15), upper = rep(NA,15))
+# combined cohort and case control
+for (i in 1:15){
+data = RE.model1.combined %>%filter(estrogen==estrogen_names[i])
+model = rma(yi=data$estimate,vi=data$variance,method="REML")   # random effect model meta analysis
+meta.model1.coef$estimate[i] = coef(model)
+meta.model1.coef$variance[i] = (model$se)^2
+meta.model1.coef$lower[i] = meta.model1.coef$estimate[i] - 1.96*model$se
+meta.model1.coef$upper[i] = meta.model1.coef$estimate[i] + 1.96*model$se
+}
+
+RE.model1 = bind_rows(RE.model1.combined,meta.model1.coef)
+RE.model1$model = "Age (Baseline)"
+
+
+#########################################################################################################
+#Random effect adjusted for age and smoking
+country.df = list()
+model2.coef= list()
+for (j in 1:4){ # change to 1:5 to add korea snu
+country.df[[j]] = df %>% filter(origin==country_list[j]) %>% select(origin,case,t.estrogen_names,age,bmi,alcohol,smoking,relativegc,education)
+model2.coef[[j]] = data.frame(origin=country_list[j],estrogen = c(estrogen_names),estimate=rep(NA,15), variance=rep(NA,15), lower = rep(NA,15), upper = rep(NA,15))
+
+if (j==1){ range=c(1,2,4:15)} else{ range=1:15  }
+
+ for (k in range){
+ model = summary(glm(as.formula(paste0("case", " ~ ", (paste(t.estrogen_names[k], "age","smoking", sep="+")))), data=country.df[[j]],  family=binomial(link="logit")))$coef
+ model2.coef[[j]]$estimate[k] = model[2,1]
+ model2.coef[[j]]$variance[k] = (model[2,2])^2
+ model2.coef[[j]]$lower[k] = model[2,1]-1.96*model[2,2]
+ model2.coef[[j]]$upper[k] = model[2,1]+1.96*model[2,2]
+ }
+}
+model2.coef = bind_rows(model2.coef) %>% mutate(variance = ifelse(variance>1000,NA,variance))
+
+meta.model2.coef.cohort = data.frame(origin="Cohort Random Effect",estrogen = estrogen_names,estimate=rep(NA,15), variance=rep(NA,15),lower = rep(NA,15), upper = rep(NA,15))
+# for cohort
+for (i in 1:15){
+data = model2.coef %>% filter(origin %in% c("Germany", "Korea (KMCC)","Iran")) %>%filter(estrogen==estrogen_names[i])
+model = rma(yi=data$estimate,vi=data$variance,method="REML")   # random effect model meta analysis
+meta.model2.coef.cohort$estimate[i] = coef(model)
+meta.model2.coef.cohort$variance[i] = (model$se)^2
+meta.model2.coef.cohort$lower[i] = meta.model2.coef.cohort$estimate[i] - 1.96*model$se
+meta.model2.coef.cohort$upper[i] = meta.model2.coef.cohort$estimate[i] + 1.96*model$se
+}
+
+meta.model2.coef.casecontrol = data.frame(origin="Case Control Random Effect",estrogen = estrogen_names,estimate=rep(NA,15), variance=rep(NA,15),lower = rep(NA,15), upper = rep(NA,15))
+# for case control
+for (i in 1:15){
+data = model2.coef %>% filter(origin %in% c("Japan", "Korea (SNU)")) %>%filter(estrogen==estrogen_names[i])
+model = rma(yi=data$estimate,vi=data$variance,method="REML")   # random effect model meta analysis
+meta.model2.coef.casecontrol$estimate[i] = coef(model)
+meta.model2.coef.casecontrol$variance[i] = (model$se)^2
+meta.model2.coef.casecontrol$lower[i] = meta.model2.coef.casecontrol$estimate[i] - 1.96*model$se
+meta.model2.coef.casecontrol$upper[i] = meta.model2.coef.casecontrol$estimate[i] + 1.96*model$se
+}
+
+
+RE.model2.combined = bind_rows(meta.model2.coef.cohort,meta.model2.coef.casecontrol)
+meta.model2.coef = data.frame(origin="Overall Random Effect",estrogen = estrogen_names,estimate=rep(NA,15), variance=rep(NA,15),lower = rep(NA,15), upper = rep(NA,15))
+# combined cohort and case control
+for (i in 1:15){
+data = RE.model2.combined %>%filter(estrogen==estrogen_names[i])
+model = rma(yi=data$estimate,vi=data$variance,method="REML")   # random effect model meta analysis
+meta.model2.coef$estimate[i] = coef(model)
+meta.model2.coef$variance[i] = (model$se)^2
+meta.model2.coef$lower[i] = meta.model2.coef$estimate[i] - 1.96*model$se
+meta.model2.coef$upper[i] = meta.model2.coef$estimate[i] + 1.96*model$se
+}
+
+RE.model2 = bind_rows(RE.model2.combined,meta.model2.coef)
+
+RE.model2$model = "Age and Smoking"
+
+
+#########################################################################################################
+# full model
+
+country.df = list()
+model3.coef= list()
+for (j in 1:4){ # change to 1:5 to add korea snu
+  
+
+country.df[[j]] = df %>% filter(origin==country_list[j]) %>% select(origin,case,t.estrogen_names,age,bmi,alcohol,smoking,relativegc,education)
+model3.coef[[j]] = data.frame(origin=country_list[j],estrogen = c(estrogen_names),estimate=rep(NA,15), variance=rep(NA,15), lower = rep(NA,15), upper = rep(NA,15))
+
+
+if (j==1){ # for germany
+ for (k in c(1,2,4:15)){
+  model = summary(glm(as.formula(paste0("case", " ~ ", (paste(t.estrogen_names[k], "age","smoking","bmi","education","relativegc", sep="+")))), data=country.df[[j]],  family=binomial(link="logit")))$coef
+  
+  model3.coef[[j]]$estimate[k] = model[2,1]
+ model3.coef[[j]]$variance[k] = (model[2,2])^2
+ model3.coef[[j]]$lower[k] = model[2,1]-1.96*model[2,2]
+ model3.coef[[j]]$upper[k] = model[2,1]+1.96*model[2,2]
+ }
+  } else if (j==2){ # for japan
+  for (k in 1:15){
+  model = summary(glm(as.formula(paste0("case", " ~ ", (paste(t.estrogen_names[k], "age","smoking","bmi","relativegc", sep="+")))), data=country.df[[j]],  family=binomial(link="logit")))$coef
+  
+   model3.coef[[j]]$estimate[k] = model[2,1]
+ model3.coef[[j]]$variance[k] = (model[2,2])^2
+ model3.coef[[j]]$lower[k] = model[2,1]-1.96*model[2,2]
+ model3.coef[[j]]$upper[k] = model[2,1]+1.96*model[2,2]
+  }
+ } else if (j==3){ # for korea (KMCC)
+  for (k in 1:15){
+  model = summary(glm(as.formula(paste0("case", " ~ ", (paste(t.estrogen_names[k], "age","smoking","bmi","education", sep="+")))), data=country.df[[j]],  family=binomial(link="logit")))$coef
+  
+   model3.coef[[j]]$estimate[k] = model[2,1]
+ model3.coef[[j]]$variance[k] = (model[2,2])^2
+ model3.coef[[j]]$lower[k] = model[2,1]-1.96*model[2,2]
+ model3.coef[[j]]$upper[k] = model[2,1]+1.96*model[2,2]
+  }
+ } else if (j==4){ # for iran
+  for (k in 1:15){
+  model = summary(glm(as.formula(paste0("case", " ~ ", (paste(t.estrogen_names[k], "age","smoking","bmi","education","relativegc", sep="+")))), data=country.df[[j]],  family=binomial(link="logit")))$coef
+ 
+   model3.coef[[j]]$estimate[k] = model[2,1]
+ model3.coef[[j]]$variance[k] = (model[2,2])^2
+ model3.coef[[j]]$lower[k] = model[2,1]-1.96*model[2,2]
+ model3.coef[[j]]$upper[k] = model[2,1]+1.96*model[2,2]
+   }
+ } else if (j==5){ # for korea snu
+  for (k in 1:15){
+  model = summary(glm(as.formula(paste0("case", " ~ ", (paste(t.estrogen_names[k], "age","smoking","bmi","education","relativegc", sep="+")))), data=country.df[[j]],  family=binomial(link="logit")))$coef
+  
+   model3.coef[[j]]$estimate[k] = model[2,1]
+ model3.coef[[j]]$variance[k] = (model[2,2])^2
+ model3.coef[[j]]$lower[k] = model[2,1]-1.96*model[2,2]
+ model3.coef[[j]]$upper[k] = model[2,1]+1.96*model[2,2]
+  }
+ }
+
+ }
+
+model3.coef = bind_rows(model3.coef) %>% mutate(variance = ifelse(variance>1000,NA,variance))
+
+meta.model3.coef.cohort = data.frame(origin="Cohort Random Effect",estrogen = estrogen_names,estimate=rep(NA,15), variance=rep(NA,15),lower = rep(NA,15), upper = rep(NA,15))
+# for cohort
+for (i in 1:15){
+data = model3.coef %>% filter(origin %in% c("Germany", "Korea (KMCC)","Iran")) %>%filter(estrogen==estrogen_names[i])
+model = rma(yi=data$estimate,vi=data$variance,method="REML")   # random effect model meta analysis
+meta.model3.coef.cohort$estimate[i] = coef(model)
+meta.model3.coef.cohort$variance[i] = (model$se)^2
+meta.model3.coef.cohort$lower[i] = meta.model3.coef.cohort$estimate[i] - 1.96*model$se
+meta.model3.coef.cohort$upper[i] = meta.model3.coef.cohort$estimate[i] + 1.96*model$se
+}
+
+meta.model3.coef.casecontrol = data.frame(origin="Case Control Random Effect",estrogen = estrogen_names,estimate=rep(NA,15), variance=rep(NA,15),lower = rep(NA,15), upper = rep(NA,15))
+# for case control
+for (i in 1:15){
+data = model3.coef %>% filter(origin %in% c("Japan", "Korea (SNU)")) %>%filter(estrogen==estrogen_names[i])
+model = rma(yi=data$estimate,vi=data$variance,method="REML")   # random effect model meta analysis
+meta.model3.coef.casecontrol$estimate[i] = coef(model)
+meta.model3.coef.casecontrol$variance[i] = (model$se)^2
+meta.model3.coef.casecontrol$lower[i] = meta.model3.coef.casecontrol$estimate[i] - 1.96*model$se
+meta.model3.coef.casecontrol$upper[i] = meta.model3.coef.casecontrol$estimate[i] + 1.96*model$se
+}
+
+
+RE.model3.combined = bind_rows(meta.model3.coef.cohort,meta.model3.coef.casecontrol)
+meta.model3.coef = data.frame(origin="Overall Random Effect",estrogen = estrogen_names,estimate=rep(NA,15), variance=rep(NA,15),lower = rep(NA,15), upper = rep(NA,15))
+# combined cohort and case control
+for (i in 1:15){
+data = RE.model3.combined %>%filter(estrogen==estrogen_names[i])
+model = rma(yi=data$estimate,vi=data$variance,method="REML")   # random effect model meta analysis
+meta.model3.coef$estimate[i] = coef(model)
+meta.model3.coef$variance[i] = (model$se)^2
+meta.model3.coef$lower[i] = meta.model3.coef$estimate[i] - 1.96*model$se
+meta.model3.coef$upper[i] = meta.model3.coef$estimate[i] + 1.96*model$se
+}
+
+RE.model3 = bind_rows(RE.model3.combined,meta.model3.coef)
+RE.model3$model = "Age, Smoking, BMI, Education, and Family History"
+
+
+#########################################################################################################
+# combinig all data
+
+RE.model = bind_rows(RE.model1,RE.model2, RE.model3) %>% 
+  rename(Estrogen  = estrogen) %>%
+  full_join(estrogen_names_df,by="Estrogen") %>%
+  mutate(Estrogen = factor(as.factor(Estrogen), levels=estrogen_names),
+         Nomenclature = factor(as.factor(Nomenclature), levels=estrogen_names_long2),
+         model = factor(as.factor(model), levels= rev(c("Age (Baseline)", "Age and Smoking", "Age, Smoking, BMI, Education, and Family History"))),
+         origin = factor(as.factor(origin), levels = rev(c("Cohort Random Effect", "Case Control Random Effect", "Overall Random Effect"))))
+# exponentiate
+RE.model[,3:6] = sapply(RE.model[,3:6], exp)
+
+
+#########################################################################################################
+# comparing overall random effects per model
+ggplot(data = RE.model %>% filter(origin=="Overall Random Effect"),aes(x = model,y = estimate))+
+    geom_pointrange(aes(ymin = lower, ymax = upper, col=model),size=0.75)+
+  geom_errorbar(aes(ymin=lower, ymax=upper,col=model),width=0.75,cex=1)+   
+      ylab("Odds Ratio (95% CI)")+
+      scale_y_log10(breaks = c(0.25,0.5,1,1.5,2,3,5,7,9), labels=c(0.25,0.5,1,1.5,2,3,5,7,9))+
+      theme_blank()+
+  scale_color_manual(values = c("dodgerblue2","lightskyblue3","cyan3"))+
+  geom_hline(aes(fill=model),yintercept =1, linetype="dotted",size=1.5)+
+    facet_wrap(~ Nomenclature,strip.position="left",nrow=15,scales = "free_y") +
+          xlab("")+ 
+    theme(plot.title=element_text(size=16,face="bold"),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_text(face="bold"),
+        axis.title=element_text(size=12,face="bold"),
+        strip.text.y = element_text(hjust=0,vjust = 1,angle=180,face="bold"),
+        legend.title=element_blank(),
+        legend.position="bottom")+
+    coord_flip()+
+  ggtitle("Comparison of Pooled Random Effects Across Different Models")+
+   guides(color = guide_legend(reverse = TRUE))
+
+#########################################################################################################
+plot1 = ggplot(data = RE.model %>% filter(model == "Age (Baseline)"), aes(x = origin,y = estimate))+
+    geom_pointrange(aes(ymin = lower, ymax = upper, col=origin),size=0.75)+
+  geom_errorbar(aes(ymin=lower, ymax=upper,col=origin),width=0.75,cex=1)+   
+      ylab("Odds Ratio (95% CI)")+
+       scale_y_log10(breaks = c(0.25,0.5,1,1.5,2,3,5,7,9), labels=c(0.25,0.5,1,1.5,2,3,5,7,9))+
+      theme_blank()+
+ scale_color_manual(labels = c("Overall Random Effect","Case Control Random Effect", "Cohort Random Effect"),values = c("dodgerblue2","lightskyblue3","cyan3"))+
+  geom_hline(yintercept =1, linetype="dotted",size=1.5)+
+    facet_wrap(~ Nomenclature,strip.position="left",nrow=15,scales = "free_y") +
+          xlab("")+ 
+    theme(plot.title=element_text(size=16,face="bold",hjust=0.5),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_text(face="bold"),
+        axis.title=element_text(size=12,face="bold"),
+        strip.text.y = element_text(hjust=0,vjust = 1,angle=180,face="bold"),
+        legend.title=element_blank(),
+        legend.position="bottom")+
+    coord_flip()+
+  ggtitle("Age (Baseline)")+
+   guides(color = guide_legend(reverse = TRUE))
+
+
+plot2 = ggplot(data = RE.model %>% filter(model == "Age and Smoking"), aes(x = origin,y = estimate))+
+    geom_pointrange(aes(ymin = lower, ymax = upper, col=origin),size=0.75)+
+  geom_errorbar(aes(ymin=lower, ymax=upper,col=origin),width=0.75,cex=1)+   
+      ylab("Odds Ratio (95% CI)")+
+       scale_y_log10(breaks = c(0.25,0.5,1,1.5,2,3,5,7,9), labels=c(0.25,0.5,1,1.5,2,3,5,7,9))+
+      theme_blank()+
+ scale_color_manual(labels = c("Overall Random Effect","Case Control Random Effect", "Cohort Random Effect"),values = c("dodgerblue2","lightskyblue3","cyan3"))+
+  geom_hline(yintercept =1, linetype="dotted",size=1.5)+
+    facet_wrap(~ Nomenclature,strip.position="left",nrow=15,scales = "free_y") +
+          xlab("")+ 
+    theme(plot.title=element_text(size=16,face="bold",hjust=0.5),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_text(face="bold"),
+        axis.title=element_text(size=12,face="bold"),
+        strip.text.y = element_blank(),
+        legend.title=element_blank(),
+        legend.position="bottom")+
+    coord_flip()+
+  ggtitle("Age and Smoking")+
+   guides(color = guide_legend(reverse = TRUE))
+
+
+plot3 = ggplot(data = RE.model %>% filter(model == "Age, Smoking, BMI, Education, and Family History"), aes(x = origin,y = estimate))+
+    geom_pointrange(aes(ymin = lower, ymax = upper, col=origin),size=0.75)+
+  geom_errorbar(aes(ymin=lower, ymax=upper,col=origin),width=0.75,cex=1)+   
+      ylab("Odds Ratio (95% CI)")+
+        scale_y_log10(breaks = c(0.25,0.5,1,1.5,2,3,5,7,9), labels=c(0.25,0.5,1,1.5,2,3,5,7,9))+
+      theme_blank()+
+ scale_color_manual(labels = c("Overall Random Effect","Case Control Random Effect", "Cohort Random Effect"),values = c("dodgerblue2","lightskyblue3","cyan3"))+
+  geom_hline(yintercept =1, linetype="dotted",size=1.5)+
+    facet_wrap(~ Nomenclature,strip.position="left",nrow=15,scales = "free_y") +
+          xlab("")+ 
+    theme(plot.title=element_text(size=16,face="bold"),
+        
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+      axis.line = element_line(colour = "darkblue", 
+                      size = 1, linetype = "solid"),
+        axis.text.x=element_text(face="bold"),
+        axis.title=element_text(size=12,face="bold"),
+        strip.text.y = element_blank(),
+        legend.title=element_blank(),
+        legend.position="bottom")+
+     
+    coord_flip()+
+  ggtitle("Age, Smoking, BMI, Education, and Family History")+
+   guides(color = guide_legend(reverse = TRUE))
+
+ggarrange(plot1,plot2,plot3, ncol=3, widths = c(0.5,0.5,0.5), legend="bottom", common.legend=TRUE)
+
+```
+
+
+```{r}
+
+```
+
+
+
+
+
+    

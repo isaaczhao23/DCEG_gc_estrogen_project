@@ -1,0 +1,91 @@
+
+
+percent nf for qc ids
+```{r}
+nf.df.id = as.data.frame(read_xlsx("./data/qc_analysis.xlsx",na="")) %>%
+  filter((ID %in% c("A","B","D","E"))) %>%
+  gather(Estrogen,Concentration,estrogen_names) %>%
+  mutate(batch.num = as.factor(batch.num),  Estrogen = factor(as.factor(Estrogen),levels=estrogen_names)) %>%
+  group_by(ID) %>%
+  summarize(total_NF = sum(is.na(Concentration)), pct_NF = round(100*total_NF/n(),2) ) #%>%
+  #summarize(mean_pct_NF = paste0(round(mean(pct_NF),2),"%"), sd_pct_NF = paste0(round(sd(pct_NF),2),"%"))
+
+sjPlot::tab_df(nf.df.id,show.rownames=FALSE, title= "ID NF Summary")
+```
+
+
+percent nf for qc ids and estrogen
+```{r}
+nf.df.id = as.data.frame(read_xlsx("./data/qc_analysis.xlsx",na="")) %>%
+  filter((ID %in% c("A","B","D","E"))) %>%
+  gather(Estrogen,Concentration,estrogen_names) %>%
+  mutate(batch.num = as.factor(batch.num)) %>%
+  group_by(ID,Estrogen) %>%
+  summarize(total_NF = sum(is.na(Concentration)), pct_NF = round(100*total_NF/n(),2) ) #%>%
+  #summarize(mean_pct_NF = paste0(round(mean(pct_NF),2),"%"), sd_pct_NF = paste0(round(sd(pct_NF),2),"%"))
+
+sjPlot::tab_df(nf.df.id,show.rownames=FALSE, title= "ID NF Summary")
+```
+
+
+
+
+percent nf for batches
+```{r}
+batch.df = df %>%
+  gather(Estrogen,Concentration,estrogen_names) %>%
+  mutate(batch.num = as.factor(batch.num), Estrogen = factor(as.factor(Estrogen),levels=estrogen_names)) %>%
+  group_by(batch.num) %>%
+  summarize(total_NF = sum(is.na(Concentration)), pct_NF = round(100*total_NF/n(),2) ) #%>%
+  #summarize(mean_pct_NF = paste0(round(mean(pct_NF),2),"%"), sd_pct_NF = paste0(round(sd(pct_NF),2),"%"))
+
+sjPlot::tab_df(batch.df,show.rownames=FALSE, title= "Batch NF Summary")
+```
+
+
+percent nf for estrogen
+```{r}
+estrogen.df = df %>%
+  gather(Estrogen,Concentration,estrogen_names) %>%
+  group_by(Estrogen) %>%
+  summarize(total_NF = sum(is.na(Concentration)), pct_NF = round(100*total_NF/n(),2) ) #%>%
+  #summarize(mean_pct_NF = paste0(round(mean(pct_NF),2),"%"), sd_pct_NF = paste0(round(sd(pct_NF),2),"%"))
+
+sjPlot::tab_df(estrogen.df,show.rownames=FALSE, title= "Estrogen NF Summary")
+```
+
+
+percent nf for case/control
+```{r}
+case.control.df = df %>%
+  gather(Estrogen,Concentration,estrogen_names) %>%
+  group_by(case,Estrogen) %>%
+  summarize(total_NF = sum(is.na(Concentration)), pct_NF = round(100*total_NF/n(),2) ) #%>%
+  #summarize(mean_pct_NF = paste0(round(mean(pct_NF),2),"%"), sd_pct_NF = paste0(round(sd(pct_NF),2),"%"))
+
+sjPlot::tab_df(case.control.df,show.rownames=FALSE, title= "Case NF Summary")
+```
+
+
+```{r}
+qc.df = as.data.frame(read_xlsx("./data/qc_analysis.xlsx",na="")) %>% 
+  filter((ID %in% c("A","B","D","E"))) %>%
+  mutate(batch.num=as.character(batch.num)) %>%
+  gather(Estrogen,Concentration,estrogen_names) %>%
+  mutate(batch.num = factor(as.factor(batch.num),levels = as.character(seq(1:16))), is_NF = as.factor(ifelse(is.na(Concentration),1,0))) 
+qc.df[is.na(qc.df)] = 0.01
+
+
+ggplot(qc.df,aes(x=ID,y=Concentration)) +
+  geom_jitter(data = qc.df %>% filter(is_NF==0), aes(color=is_NF),size=2,alpha=0.4,width=0.3,height=0,show_guide = TRUE) +
+  geom_jitter(data = qc.df %>% filter(is_NF==1), aes(color=is_NF),size=2,alpha=0.4,width=0.3,height=0.75,show_guide = TRUE) +
+  theme_classic() +  
+  geom_vline(data = data.frame(Estrogen= sort(rep(unique(qc.df$Estrogen),length(unique(qc.df$ID)))), id.num=rep(1:length(unique(qc.df$ID)),length(unique(qc.df$Estrogen)))),
+             aes(xintercept=id.num),color="grey10",linetype="dotted")+
+  scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),labels = scales::trans_format("log10", scales::math_format(10^.x))) +
+  ylab("Estrogen metabolite concentration (pg) in 66.66 uL urine injection")+
+  xlab("ID")+ 
+  facet_wrap(~ Estrogen,scales="free",ncol=5) 
+```
+
+

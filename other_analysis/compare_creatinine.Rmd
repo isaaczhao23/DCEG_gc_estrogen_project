@@ -1,0 +1,101 @@
+
+```{r}
+setwd("C:/Users/zhaoi2/Desktop/project") 
+source("./Supplemental/check_packages.R")
+source("./Supplemental/custom_cormatrix.R")  # use to load correlation matrix function
+check_packages(c("optimx","metafor","stringr","Hmisc","ggpubr","readxl","xlsx","sas7bdat","readstata13","gridExtra","RColorBrewer","sjPlot",
+                 "grid","lme4","ggrepel","tidyr","networkD3","dplyr","ggplot2"))
+
+# Name estrogens
+estrogen_names = c("E1", "E2", "4OHE1", "4ME1","4ME2","2OHE1","3ME1" ,"2OHE2","2ME1","2ME2","16aE1","17epiE3","E3","16KE2","16epiE3") 
+estrogen_names_long = c("Estrone (E1)", "Estradiol (E2)", "4-Hydroxyestrone (4OHE1)", "4-Methoxyestrone (4ME1)","4-Methoxyestradiol (4ME2)","2-Hydroxyestrone (2OHE1)","2-Hydroxyestrone-3-methyl ether (3ME1)" ,"2-Hydroxyestradiol (2OHE2)","2-Methoxyestrone (2ME1)","2-Methoxyestradiol (2ME2)","16a-Hydroxyestrone (16aE1)","17-Epiestriol (17epiE3)","Estriol (E3)","16-Ketoestradiol (16KE2)","16-Epiestriol (16epiE3)")
+estrogen_names_long2 = c("Estrone", "Estradiol", "4-Hydroxyestrone", "4-Methoxyestrone","4-Methoxyestradiol","2-Hydroxyestrone","2-Hydroxyestrone-3-methyl ether" ,"2-Hydroxyestradiol","2-Methoxyestrone","2-Methoxyestradiol","16a-Hydroxyestrone","17-Epiestriol","Estriol","16-Ketoestradiol","16-Epiestriol")
+estrogen_names_df = data.frame(Estrogen = estrogen_names, Nomenclature = estrogen_names_long2)
+t.estrogen_names = paste0("t.",estrogen_names)
+
+load("./data/df_all.RDA")
+```
+
+```{r}
+
+# compare japan creatinine
+a = as.data.frame(read_xlsx("./data/Character_for_NIH_urine_Shimura_2-17-2018_modified_by_CC.XLSX",na="No data")) %>%
+  dplyr::rename('Japan' = Correction, 'NCI' = 'NCI Lab_creatinine', ID = Patient_Number) %>% filter(!(ID %in% c("R44")))
+a[a=="lab error"] = NA
+a$'NCI' = as.numeric(a$'NCI')
+c = a %>% dplyr::mutate(Difference = Japan -NCI, Percent = Japan/NCI ) %>% 
+  arrange(Japan) %>% 
+  dplyr::select(ID,Japan,NCI,Difference,Percent)
+  
+d = gather(c,dataset,creatinine,2:3) %>% mutate(dataset = recode_factor(dataset, 'creatinine.batch'='Batch', 'creatinine.cov'='Covariates'))
+d2 = gather(c,dataset,creatinine,2:4)
+
+predict.df = c %>% filter(ID %in% c("Y142","G104")) %>% select(ID,Japan)
+
+table1 <- ggtexttable(c, rows = NULL, theme = ttheme("mOrange"))
+
+graph1 = ggpaired(na.omit(d), x = "dataset", y = "creatinine", color = "dataset", line.color = "gray", line.size = 0.4,palette = "jco")+
+  stat_compare_means(paired = TRUE,method="wilcox.test")+  theme(legend.position="none")
+
+graph2 = ggplot(c,aes(x=NCI,y=Japan))+
+  geom_point(size=7,aes(color=abs(Difference)))+
+  geom_abline(slope=1,intercept=0,linetype="dashed")+
+  theme_classic()+
+  scale_color_gradient2(low = "black", mid="yellow",high = "indianred2")+
+ 
+  xlim(0,250)+
+  ylim(0,250)+
+  geom_text(aes(label=ifelse(abs(Difference)>31*1.96,as.character(ID),'')),hjust=0,vjust=0,size=5) 
+
+ggarrange(table1, graph1, graph2, ncol = 2, nrow = 2,heights = c(2.7, 1,1))
+```
+
+
+
+# Regression to predict missing values
+```{r}
+model_percent = lm(Percent ~ Japan, c)
+model.predict_percent = predict(model_percent, predict.df)
+predict.df2 = cbind(predict.df,model.predict_percent) %>% rename(Percent = model.predict_percent) %>% mutate(NCI_Predicted = Japan/Percent)
+
+ggplot(c,aes(x=Japan,y=Japan/Percent)) +
+  geom_point(size=10,alpha=0.8)+
+  geom_point(data=predict.df2,aes(x=Japan,y=Japan/Percent),color="red",size=10)+
+  geom_smooth(method="lm",color="grey20",fill="grey60",alpha=0.4) +
+  geom_text(data = predict.df2, aes(x=Japan, y=Japan/Percent,label=ID),hjust=1.5,vjust=-2,size=5)+
+  theme_classic() +
+  xlab("Japan Lab Creatinine Measurements")+
+  ylab("NCI Lab Creatinine Measurements")+
+  #annotate("text", label = "Adjusted R2 = 0.3175 (p= 0.0013)", x = 50, y = 200, size = 5)+
+  ggtitle("Prediction Model using Percent")
+
+model_percent_line = data.frame(x = seq(0,250,1),  y=seq(0,250,1)/predict(model_percent, data.frame(Japan=seq(0,250,1))))
+```
+
+```{r}
+model_nci = lm(NCI ~ Japan, c)
+model.predict_nci = predict(model_nci, predict.df)
+predict.df3 = cbind(predict.df,model.predict_nci) %>% 
+  rename(NCI_Predicted = model.predict_nci)
+
+
+ggplot(c,aes(x=Japan,y=NCI)) +
+  geom_point(size=10,alpha=0.8)+
+  geom_point(data=predict.df3 ,aes(x=Japan,y=NCI_Predicted),color="red",size=10,alpha=0.8) +
+  geom_point(data=predict.df2,aes(x=Japan,y=Japan/Percent),color="green",size=10,alpha=0.8)+
+  geom_text(data = predict.df3, aes(x=Japan, y=NCI_Predicted,label=ID),hjust=1.5,vjust=-2,size=5)+
+  geom_line(data=model_percent_line,aes(x=x,y=y),linetype="dashed",color="green",alpha=0.8,size=3)+
+  geom_smooth(method="lm",color="grey20",fill="grey60",alpha=0.4) +
+  theme_classic()  +
+  xlab("Japan Lab Creatinine Measurements")+
+  ylab("NCI Lab Creatinine Measurements")
+  #annotate("text", label = "Adjusted R2 = 0.9779 (p= 2.2e-16)", x = 50, y = 200, size = 5)+
+  #ggtitle("Prediction Model using Absolute Difference (Japan-NCI)")
+
+sjt.lm(model_percent)
+
+
+
+
+```
+

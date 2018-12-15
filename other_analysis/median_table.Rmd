@@ -1,0 +1,50 @@
+
+```{r}
+setwd("C:/Users/zhaoi2/Desktop/project") 
+source("./Supplemental/check_packages.R")
+source("./Supplemental/custom_cormatrix.R")  # use to load correlation matrix function
+check_packages(c("ggthemes","optimx","metafor","stringr","Hmisc","ggpubr","readxl","xlsx","sas7bdat","readstata13","gridExtra","RColorBrewer","sjPlot",
+                 "grid","lme4","ggrepel","tidyr","networkD3","dplyr","ggplot2"))
+
+# Name estrogens
+estrogen_names = c("E1", "E2", "4OHE1", "4ME1","4ME2","2OHE1","3ME1" ,"2OHE2","2ME1","2ME2","16aE1","17epiE3","E3","16KE2","16epiE3") 
+estrogen_names_long = c("Estrone (E1)", "Estradiol (E2)", "4-Hydroxyestrone (4OHE1)", "4-Methoxyestrone (4ME1)","4-Methoxyestradiol (4ME2)","2-Hydroxyestrone (2OHE1)","2-Hydroxyestrone-3-methyl ether (3ME1)" ,"2-Hydroxyestradiol (2OHE2)","2-Methoxyestrone (2ME1)","2-Methoxyestradiol (2ME2)","16alpha-Hydroxyestrone (16aE1)","17-Epiestriol (17epiE3)","Estriol (E3)","16-Ketoestradiol (16KE2)","16-Epiestriol (16epiE3)")
+estrogen_names_long2 = c("Estrone", "Estradiol", "4-Hydroxyestrone", "4-Methoxyestrone","4-Methoxyestradiol","2-Hydroxyestrone","2-Hydroxyestrone-3-methyl ether" ,"2-Hydroxyestradiol","2-Methoxyestrone","2-Methoxyestradiol","16alpha-Hydroxyestrone","17-Epiestriol","Estriol","16-Ketoestradiol","16-Epiestriol")
+estrogen_names_df = data.frame(Estrogen = estrogen_names, Nomenclature = estrogen_names_long2)
+t.estrogen_names = paste0("t.",estrogen_names)
+
+country_list = c("Germany","Japan","Korea (KMCC)", "Iran","Korea (SNU)")
+
+load("./data/df_all.RDA")
+```
+
+
+
+
+```{r}
+country_name = c("Iran", "Korea (KMCC)", "Germany", "Korea (SNU)", "Japan")
+
+df = as.data.frame(matrix(ncol=17,nrow=500))
+colnames(df) = c(paste0("s.",estrogen_names),"origin","case")
+df[,1:15] = sapply(df[,1:15], function(x) rnorm(500,1.5,0.5))
+df[,16] = rep(country_name,100)
+df[,17] = rbinom(n=500, size=1, prob=0.5)
+df.s = df %>% select(paste0("s.",estrogen_names),origin,case)
+
+median = as.data.frame(matrix(ncol=6,nrow=15))
+colnames(median) = c("Estrogen", country_name)
+median$Estrogen = estrogen_names_long2
+for (i in 1:5){
+	data = df.s %>% filter(case==0) %>% filter(origin==country_name[i]) %>% select(paste0("s.",estrogen_names))
+	median[,i+1] = paste0( round(sapply(data, function(x) median(x, na.rm=TRUE)),2),
+		" (",
+		round(sapply(data, function(x) quantile(x, 0.25, na.rm=TRUE, names=FALSE)),2),
+		", ",
+		round(sapply(data, function(x) quantile(x, 0.75, na.rm=TRUE, names=FALSE)),2),
+		")")
+}
+
+sjPlot::tab_df(median,show.rownames=FALSE, title= "Median and IQR Range")
+
+```
+
