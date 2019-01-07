@@ -21,7 +21,7 @@ knitr::opts_chunk$set(
 	fig.path='figure/graphics-', cache.path='cache/graphics-', # sets folder for saving graphics
     fig.align='center',external=TRUE, warning=FALSE, # alligns figures to center, no print warnings
     fig.pos='H', table.placement='H', fig.height=12.5,  # makes tables and graphs in correct order with text
-		fig.width=15,
+		fig.width=12.5,
 	echo=FALSE, message=FALSE, cache=TRUE, #don't print code or messages, saves in cache
 	warn.conflicts=F,  # don't print warnings 
 	tidy=TRUE,tidy.opts=list(width.cutoff=60)) # makes printing code not run off page
@@ -63,12 +63,15 @@ Postmenopausal women with gastric cancer were matched by age to gastric cancer-f
 
 Urine specimens were collected at enrollment in prospective studies and pre-treatment in case-control studies and continuously cryopreserved at -70/-80 degrees Celcius until analysis.
 
+Variables considered for covariate adjustment to estimate odds ratio effect sizes in the analysis portion were age, BMI, smoking, alcohol, education, and if the subject's relative had gastric cancer. Categories were simplified into never or ever to account for differences in how each variable was recorded for each study. This avoided ambiguous temporality of substance use for variables such as smoking and alcohol. Dividing into only two categories also reduced extreme sparsity sample size problems. 
+
+
 ## Laboratory Assay
 Stable isotope dilution liquid chromatography-tandem mass spectrometry (LC-TMS) was used at the NCI Laboratory of Proteomics and Analytical Technologies, MD to simultaneously measure the total concentration of 2 parent estrogens (estrone and estradiol) and 13 estrogen metabolites (2-hydroxyestrone, 2-methoxyestrone, 2-hydroxyestradiol, 2-methoxyestradiol, 2-hydroxyestrone-3-methyl ether, 4-hydroxyestrone, 4-methoxyestrone, 4-methoxyestradiol, 16$\alpha$-hydroxyestrone, 16-ketoestradiol, estriol, 17-epiestriol, and 16-epiestriol) in an aliquot of 500 $\mu$L urine assay for each participant. In urine, parent estrogens and their metabolites are present primarily in conjugated form. Estrogen concentrations in spot urine samples were normalized to creatinine levels in order to adjust for variation in urinary volume. 
 
 
-
-# Covarying Relationships Between Metabolites
+# Results
+## Covarying Relationships Between Metabolites
 
 ```{r,out.height = "250px", fig.cap="Estrogen Metabolite Hydroxylation Pathway Diagram"}
 knitr::include_graphics('Graphs and Tables/estrogen_diagram.png')
@@ -80,7 +83,7 @@ knitr::include_graphics('Graphs and Tables/sankey.png')
 
 Correlations between metabolites were relatively equal throughout the pathways except for the 4-Hydroxylation pathway connection with the 4OHE1 metabolite. The 16-Hydroxylation group showed slightly stronger correlations than the other hydroxylation groups.
 
-```{r, fig.height=12.5, fig.cap="Metabolite correlation matrix. Redder regions indicate stronger positive spearman correlations while bluer indicate stronger inverse spearmaan correlations. Scatterplot and histogram on log scale."}
+```{r, fig.height=12.5, fig.width=15, fig.cap="Metabolite correlation matrix. Redder regions indicate stronger positive spearman correlations while bluer indicate stronger inverse spearmaan correlations. Scatterplot and histogram on log scale."}
 custom_cormatrix(df %>% select(estrogen_names),log.transform=TRUE,size=0.8)
 
 ```
@@ -90,7 +93,7 @@ The relationship between estrogen metabolites were computed using spearman corre
 The histograms show that the estrogen metabolite concentration distributions were still highly right tail skewed even after log transformations. The correlation matrix shows that all estrogens were positively associated with each other, even after adjusting for bonferonni corrections of significance levels. The strongest correlation was among parent estrogens E1 and E2, which was expected. The lowess smooth curve regression line with span 2/3 (in dark blue on the scatterplot) shows that on the log scale, there did not appear to be any major nonlinear higher order interactions (i.e. relationships were mostly linear on the log scale).
 
 
-# Metabolite and Creatinine Missing Data
+## Missing Data
 ```{r,results='asis'}
 
 # view number of missing data
@@ -103,18 +106,18 @@ select(variable, num_missing, pct_missing) %>%
 stargazer(missing, title = "Table of missing values for metabolites and creatinine", header = FALSE,
 rownames = FALSE, type = "latex", single.row = TRUE, no.space = TRUE,
 summary = FALSE, table.placement = "H")
-
+#
 ```
 
 The average percent missing values for estrogen metabolites was about 3%, with 4OHE1 having the highest percentage of missing values. Missing values for metabolites were caused by mis-alignment of co-eluding peaks of the LC-TMS device, which could not be fully amended even after correction. The missing values were not imputed due to the unknown relationship mis-measurement of the LC-TMS device had with the probability of of a measurement to be un-recorded. In other words, it could not be determined if the distribution of missingness was independent of laboratory procedures. All estrogen batches were re-run to compare non-overlapping missing values, which determined that missingness did not appear to be correlated with how high or low the concentrations were. Thus, the standard approach of replacing all missing values with half lower limit of quantification (LLOQ) or lower limit of detection (LOD) would be inappropriate. Since missingness was determined to be independent of measured variables, complete cases (i.e. removing all missing values) was used. It should be noted that results that are borderline significant at the $\alpha$=0.05 level may change if missing values were treated differently instead.
 
 
-# Quality Control (QC) Analysis
+## Quality Control (QC) Analysis
 
 Laboratory personnel was blinded to the case-control status of sample donors. A quality control (QC) set of 20 masked duplicate samples plus 4 additional laboratory control replicates from subjects with high available volumes representative of all studies was performed. Coefficient of variation (CV) and intraclass correlation coefficient (ICC) was calculated for log-transformed standardized estrogen metabolite and creatinine concentrations for the QC samples to assess within- and between-batch variations for assay reliability. Estrogen concentrations were log transformed to improve normality of distributions to meet assumptions necessary for the computation of variance and mean. A constant of 1 was added to concentrations before log transformations to ensure all measurements were positive values. The formula used to calculate ICC was $ICC = \frac{\sigma^2_{bs}}{\sigma^2_{bs}+\sigma_{bb}+\sigma^2_{ws}}$ and the formula for the computation of CV was $CV = \frac{\sigma^2_{ws}+\sigma^2_{bb}}{\mu}$; where $\sigma^2_{bs}$ = variance between subject, $\sigma^2_{bb}$ = variance between batch, and $\sigma^2_{ws}$ = variance within subject. The variance components were computed using a two stage multilevel model with varying intercept for ID and batch. The lower limit of quantitation for each analyte was 0.04 ng/mL.
 
 
-## Laboratory Control QC Samples
+### Laboratory Control QC Samples
 ```{r,results='asis'}
 control.qc <- read_csv("data/qc_data/control.qc.csv") %>% 
 	as.data.frame() %>%   
@@ -277,9 +280,69 @@ ggplot(qc.df %>% group_by() %>%mutate(Estrogen = factor(as.factor(Estrogen), lev
 The Korea SNU replicates consisted of 19 unique samples each with two measurements, totaling 38 observations. Most metabolites had ICCs $\geq$ 50% with most CVs $\leq$ 60%, indicating moderately inconsistent measurements. Replication results for Korea SNU duplicates was worse than over all batches assessed with laboratory control samples. Many measurements for the same sample were many fold different than their counterparts. Thus, it should be noted that metabolite measurements for Korea SNU may not be reproducible and caution is advised.
 
 
+## Assessing Association between Covariates and Gastric Cancer
+```{r,fig.height=5}
+data = df %>% select(status,age, bmi, education, alcohol, smoking, relativegc, origin)
 
-# Associations with Gastric Cancer
 
+p1 = ggplot(data, aes(status,age))+
+	geom_boxplot(fill="grey75") +
+	stat_compare_means(method="t.test",na.rm=TRUE,paired=FALSE,label.x=0.75)+
+	theme_classic()+
+	xlab("") +
+		theme(axis.text.x =  element_text(size=10,face="bold"))
+
+
+p2 = ggplot(data, aes(status,bmi))+
+	geom_boxplot(fill="grey75") +
+	stat_compare_means(method="wilcox.test",na.rm=TRUE,paired=FALSE,label.x=0.75)+
+	theme_classic()+
+	xlab("")+
+		theme(axis.text.x =  element_text(size=10,face="bold"))
+
+
+p3 = ggplot(data %>% filter(education != "9999") %>% filter(!(is.na(education))), aes(status))+
+	geom_bar(aes(fill=education),position="fill",color="black") +
+	scale_fill_grey("",start=0.6, labels=c("Never","Ever") )+
+	theme_classic()+
+	scale_y_continuous("Education",labels=scales::percent)+
+	xlab("")+
+		theme(axis.text.x =  element_text(size=10,face="bold"))
+
+p4 = ggplot(data %>% filter(alcohol != "9999") %>% filter(!(is.na(alcohol))), aes(status))+
+	geom_bar(aes(fill=alcohol),position="fill",color="black") +
+	scale_fill_grey("",start=0.6, labels=c("Never","Ever") )+
+	theme_classic()+
+	scale_y_continuous("Alcohol",labels=scales::percent)+
+	xlab("")+
+		theme(axis.text.x =  element_text(size=10,face="bold"))
+
+p5 = ggplot(data %>% filter(smoking != "9999") %>% filter(!(is.na(smoking))), aes(status))+
+	geom_bar(aes(fill=smoking),position="fill",color="black") +
+	scale_fill_grey("",start=0.6, labels=c("Never","Ever") )+
+	theme_classic()+
+	scale_y_continuous("Smoking",labels=scales::percent)+
+	xlab("")+
+		theme(axis.text.x =  element_text(size=10,face="bold"))
+
+p6 = ggplot(data %>% filter(relativegc != "9999") %>% filter(!(is.na(relativegc))), aes(status))+
+	geom_bar(aes(fill=relativegc),position="fill",color="black") +
+	scale_fill_grey("",start=0.6, labels=c("Never","Ever") )+
+	theme_classic()+
+	scale_y_continuous("Relative w/ GC",labels=scales::percent)+
+	xlab("")+
+		theme(axis.text.x =  element_text(size=10,face="bold"))
+
+ggarrange(p1,p2,p3,p4,p5,p6,nrow=1,ncol=6,widths=rep(0.5,6), common.legend=TRUE,legend=c("bottom"))
+```
+
+```{r,results='asis'}
+stargazer(glm(case~origin-1, data=df %>% mutate(origin = factor(origin,levels=country_list)) , family=binomial), title = "Logistic regression comparing studies of origin to case", header = FALSE, rownames = FALSE, type = "latex", single.row = TRUE, no.space = TRUE, table.placement = "H",ci=TRUE, covariate.labels = country_list)
+```
+
+
+
+## Assessing Association between Estrogens and Gastric Cancer
 
 ```{r,fig.cap="Study specific Wilcoxon-Mann-Whitney tests for cases vs. controls"}
 ###################################
@@ -472,13 +535,14 @@ ggplot(meta.model3 %>% mutate(estrogen = factor(estrogen,levels=rev(estrogen_nam
 	theme_bw() +
     geom_hline(aes(fill=model),yintercept =1, linetype="dotted",size=1)+
     xlab("")+
-    theme(axis.text.y=element_text(face="bold",size=12.5),
-          axis.text.x=element_text(face="bold",size=12.5))+
+    theme(axis.text.y=element_text(face="bold",size=10),
+          axis.text.x=element_text(face="bold",size=10))+
     coord_flip()
 
 ```
 
-# Iraon = age +  bmi, education
+Odds ratios (OR) and corresponding 95% confidence intervals (CI) were calculated using random effects maximum likelihood for each estrogen marker using multivariable unconditional logistic regression adjusted for age, body mass index, smoking, alcohol, education, and family history of gastric cancer as available. All studies could not be adjusted for all covariates due to . The model for Japan did not include education and Korea (KMCC) did not include family history of gastric cancer due to data not being collected for these covariates.
+# Iran = age +  bmi, education
 # korea (KMCC) = age, bmi, smoking, education
 # Germany = age, bmi
 # Korea (SNU) = age, bmi, smoking, education, relativegc
@@ -498,24 +562,19 @@ Multivariate logistic model used for each study:
 
 Where $\pi = Pr(Y=1|E,X)$, $E_i$ = metabolites 1-15 as numeric tertile entries, $X_1$ = age (years), $X_2$ = BMI, $X_3$ = any educational degree, $X_4$ = ever smoked, and $X_5$ = relative with gastric cancer.   
 
-```{r}
-# Iraon = age +  bmi, education
-# korea (KMCC) = age, bmi, smoking, education
-# Germany = age, bmi
-# Korea (SNU) = age, bmi, smoking, education, relativegc
-# Japan = age, bmi, relativegc
-```
+ORs were pooled by random effect meta-analysis separately for cohort and case-control studies to assess design-specific effect differences and then were combined to assess the overall associations. Markers with statistically significant ordinal trends (p<0.05) were further examined for associations of each tertile with gastric cancer risk comparing to the lowest tertile. All p-values were two-sided. Given the exploratory nature of our study p-values were not corrected for multiple comparisons. All statistical analyses and data visualizations were performed using R package “metafor” for meta-analysis and ggplot2. 
+
 
 # Additional Analysis
 
-```{r,out.height = "250px", fig.cap="Estrogen Metabolite Hydroxylation Pathway Diagram"}
-knitr::include_graphics('Graphs and Tables/compare_estrogens_to_studies.png')
+```{r,out.height = "350px"}
+knitr::include_graphics('Graphs and Tables/compare_estrogen_to_studies.png')
 ```
 Standardized estrogen concentrations agreed with Moore et al., 2016 and Sampson et al., 2016 which used similar datasets of the same demographis (Comparison table found in Other Analysis section below).
 
 
 
-```{r,fig.cap="Pooled Wilcoxon-Mann-Whitney tests for cases vs. controls"}
+```{r,fig.height=5,fig.width=5,fig.cap="Pooled Wilcoxon-Mann-Whitney tests for cases vs. controls"}
 boxplot.df = df %>% select(estrogen_names,status) %>% gather(estrogen,value,estrogen_names) %>%
 		mutate(estrogen = factor(as.factor(estrogen),levels=rev(estrogen_names)),
 			status = factor(as.factor(status), levels=c("Case","Control"))) %>%
