@@ -1,8 +1,13 @@
-
-
-#source("custom_cormatrix.R")  # use to load this function
-
-custom_cormatrix = function(data, cor.method = "spearman",log.transform=FALSE){
+custom_cormatrix = function(data, cor.method = "spearman",size=1,log.transform=FALSE,group=NULL){
+	
+	check_packages = function(names){
+    for(name in names){
+        if (!(name %in% installed.packages()))
+            install.packages(name, repos="http://cran.us.r-project.org") #if package not installed, install the package
+        library(name, character.only=TRUE,warn.conflicts=FALSE,quietly=TRUE)
+    }
+	}
+	check_packages("RColorBrewer")
   
 # turns character columns into factor
 character_columns = names(data)[sapply(data, is.character)]
@@ -28,7 +33,7 @@ if (log.transform==TRUE){
 }
 data2 = data
     
-text.size=22.5/ncol(data)
+text.size= (22.5/ncol(data))*size
   
 # makes color scheme depending on crrelation coefficient
 cols = brewer.pal(11, "RdBu")   # goes from red to white to blue
@@ -50,19 +55,29 @@ panel.cor <- function(x, y, digits=2, cex.cor){
   if (test$p.value> 0.05){
     text(0.5,0.5,"Insignificant",cex=text.size)  # change cex value to change size of "Insignificant"
   } else{
-    text(0.5, 0.75, paste("r=",round(r,2)),cex=text.size*1.25) # prints correlatoin coefficient. change cex value to change size of correlation coefficient r (ex: cex=1)
-    text(.5, .25, paste("p=",formatC(test$p.value, format = "e", digits = 1)), cex=text.size*1.25)  # prints p value in scientific notation format.
+    text(0.5, 0.75, paste0("r=",round(r,2)),cex=text.size*1.25) # prints correlatoin coefficient. change cex value to change size of correlation coefficient r (ex: cex=1)
+    text(.5, .25, paste0("p=",formatC(test$p.value, format = "e", digits = 0)), cex=text.size*1.25)  # prints p value in scientific notation format.
     abline(h = 0.5, lty = 2) # draws a horizontal line between correlation coefficient and p value
   }
 }
 
 # makes scatterplot
+if (is.null(group)){
 panel.smooth<-function (x, y, col = "black", bg = NA, pch = 19, cex = 1.2, col.smooth = "blue", span = 2/3, iter = 3, ...) {
   points(x, y, pch = pch, col = col, bg = bg, cex = cex)
   ok <- is.finite(x) & is.finite(y)
   if (any(ok)) 
     lines(stats::lowess(x[ok], y[ok], f = span, iter = iter), lwd=2.5, 
           col = col.smooth, ...)}
+}else{
+	panel.smooth<-function (x, y, col = data[,group], bg = NA, pch = 19, cex = 1.2, col.smooth = "blue", span = 2/3, iter = 3, ...) {
+  points(x, y, pch = pch, col = col, bg = bg, cex = cex)
+  ok <- is.finite(x) & is.finite(y)
+  if (any(ok)) 
+    lines(stats::lowess(x[ok], y[ok], f = span, iter = iter), lwd=2.5, 
+          col = col.smooth, ...)}
+}
+	
 
 # makes histogram
 panel.hist <- function(x, ...){

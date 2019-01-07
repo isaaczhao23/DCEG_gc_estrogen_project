@@ -2,36 +2,21 @@
 
 
 ```{r}
-#setwd("C:/Users/zhaoi2/Desktop/project") 
 setwd("~/Desktop/nci_summer_project/project")
 source("./Supplemental/check_packages.R")
-source("./Supplemental/custom_cormatrix.R")  # use to load correlation matrix function
-check_packages(c("optimx","metafor","stringr","Hmisc","ggpubr","readxl","sas7bdat","readstata13","gridExtra","RColorBrewer","sjPlot",
-                 "grid","lme4","ggrepel","tidyr","networkD3","dplyr","ggplot2"))
-
-# Name estrogens
-estrogen_names = c("E1", "E2", "4OHE1", "4ME1","4ME2","2OHE1","3ME1" ,"2OHE2","2ME1","2ME2","16aE1","17epiE3","E3","16KE2","16epiE3") 
-estrogen_names_long = c("Estrone (E1)", "Estradiol (E2)", "4-Hydroxyestrone (4OHE1)", "4-Methoxyestrone (4ME1)","4-Methoxyestradiol (4ME2)","2-Hydroxyestrone (2OHE1)","2-Hydroxyestrone-3-methyl ether (3ME1)" ,"2-Hydroxyestradiol (2OHE2)","2-Methoxyestrone (2ME1)","2-Methoxyestradiol (2ME2)","16a-Hydroxyestrone (16aE1)","17-Epiestriol (17epiE3)","Estriol (E3)","16-Ketoestradiol (16KE2)","16-Epiestriol (16epiE3)")
-estrogen_names_long2 = c("Estrone", "Estradiol", "4-Hydroxyestrone", "4-Methoxyestrone","4-Methoxyestradiol","2-Hydroxyestrone","2-Hydroxyestrone-3-methyl ether" ,"2-Hydroxyestradiol","2-Methoxyestrone","2-Methoxyestradiol","16a-Hydroxyestrone","17-Epiestriol","Estriol","16-Ketoestradiol","16-Epiestriol")
-estrogen_names_df = data.frame(Estrogen = estrogen_names, Nomenclature = estrogen_names_long2)
-t.estrogen_names = paste0("t.",estrogen_names)
-country_list = c("Iran", "Korea (KMCC)", "Germany", "Korea (SNU)", "Japan")
-
-# in case dplyr functions are overwritten by another package
-select <- dplyr::select; rename <- dplyr::rename; mutate <- dplyr::mutate; 
-summarize <- dplyr::summarize; arrange <- dplyr::arrange; filter <- dplyr::filter
+check_packages(c("MASS","GGally","optimx","metafor","stringr","Hmisc","ggpubr","readxl","sas7bdat","readstata13","gridExtra","RColorBrewer","sjPlot","grid","lme4","ggrepel","tidyr","networkD3","dplyr","ggplot2"))
+set.seed(1)
 ```
 
-Tidy Data. CHANGE TO NEW DATA
-```{r}
 
 ###########################################################################
 ######################    Estrogen Data      ##############################
 ###########################################################################
+```{r}
 
 df.list = list()  # will store all batches into one list of multiple dataframes
 for (i in 1:16){  # reads in batches 1-16
-  df.list[[i]] = as.data.frame(read_excel(paste0("./data/estrogen_old/Batch",as.character(i), ".xlsm"),na="NF",skip=2))    # reads in batches starting row 3, replacing NF with NA
+  df.list[[i]] = as.data.frame(read_excel(paste0("./data/estrogen_data/Batch_",as.character(i), "_rev2.xlsm"),na="NF",skip=2))    # reads in batches starting row 3, replacing NF with NA
   df.list[[i]]$batch.num = i   # makes a new column to identify batche
   colnames(df.list[[i]])[1:4] = c("sample.id","customer.id","volume","injection")   # renames first 4 columns to standardize format
   # assigns sample origin identifier for each batch
@@ -44,9 +29,10 @@ for (i in 1:16){  # reads in batches 1-16
     df.list[[i]]$origin = "Iran" # Labels batch 5 to 8 iran
       df.list[[i]]$customer.id = substr(df.list[[i]]$customer.id,1,nchar(df.list[[i]]$customer.id)-5)   # removes last 5 characters of id
     }
-  else if(i>=9 && i <=16){  
+  else if(i>=9){  
     df.list[[i]]$origin = "Korea (SNU)"  # Labels batch 9 to 16 korea snu
-    df.list[[i]]$customer.id = substr(df.list[[i]]$customer.id,1,nchar(df.list[[i]]$customer.id)-2)   # removes last 2 characters of id
+    df.list[[i]] = df.list[[i]] %>% 
+	mutate(customer.id = ifelse(nchar(customer.id)==8,customer.id,substr(customer.id,1,nchar(customer.id)-2))) 
   }
   # Makes all estrogen columns numeric
   original.colnames = colnames(df.list[[i]][5:19]) 
@@ -54,26 +40,21 @@ for (i in 1:16){  # reads in batches 1-16
    colnames(df.list[[i]][,5:19]   ) = original.colnames
 }
 
+
 df.list[[1]]$origin[1:21] = "Germany"   # makes row 1-21 in batch 1 germany
 df.list[[1]]$customer.id[22:36] = str_split(df.list[[1]]$customer.id[22:36],fixed("_"),n=3,simplify=TRUE)[,3]  # changes customer id format
-df.list[[1]]$`4ME2`[c(6,32)] = NA   # Relabels negative values to missing (converted to half lloq later)
-#df.list[[2]]$sample.id = c("C_5",seq(37,48),"C_6",seq(49,60),"C_7",seq(61,72),"C_8") # changes sample id in batch 2
-#df.list[[3]]$sample.id = c("C_9",seq(73,83),"C_10", seq(84,95), "C_11", seq(96,108), "C_12") # changes sample id in batch 3
-df.list[[3]]$customer.id[c(1,13,26,40)] = c("control_9","control_10","control_11","control_12") # changes customer id in batch 3
-#df.list[[5]]$sample.id[1:36] = as.character(seq(1,36,1))  # changes sample id in batch 5
-df.list[[15]]$`4ME1`[c(1,42)] = NA   # Relabels negative values to missing (converted to half lloq later)
-df.list[[16]]$customer.id[38] = "K1040001"   # Changes customer id to K10400001
-
+df.list[[1]]$`4ME2`[c(6,32)] = NA   # Relabels negative values to missing 
+df.list[[15]]$`4ME1`[c(1,42)] = NA   # Relabels negative values to missing
+df.list[[16]]$customer.id[df.list[[16]]$customer.id =="K1040"] = "K1040001"
 
 df.batch = bind_rows(df.list) %>% # Combines all batches
-    inner_join(data.frame(origin = c("Germany","Iran","Japan","Korea (KMCC)", "Korea (SNU)"),  study = c("Cohort", "Cohort", "C-C*", "Cohort", "C-C*")), by="origin") %>%  # Assigns study type (cohort or C-C*)
-           arrange.variables(c("batch.num"=1, "origin"=2, "study"=3,"sample.id"=4,"customer.id"=5)) %>% # reorders columns
-          dplyr::select(-'#',-Total,-volume)  # removes #, total, and volume column
+    inner_join(data.frame(origin = c("Germany","Iran","Japan","Korea (KMCC)", "Korea (SNU)"),  study = c("Cohort", "Cohort", "Case Control", "Cohort", "Case Control")), by="origin") %>%  # Assigns study type (cohort or C-C*)
+           arrange.variables(c("batch.num"=1, "origin"=2, "study"=3,"customer.id"=4)) %>% # reorders columns
+          dplyr::select(-volume,-sample.id)  # removes #, total, and volume column
 
-# Converts estrogen pg to pg/uL
-df.batch[,estrogen_names] = sweep(df.batch[ ,estrogen_names],df.batch[,"injection"],MARGIN=1,"/")   # Divides all estrogens by injection
-# Replaces NF values with half LLOQ (LLOQ = 0.04 pg/uL)
-#df.batch[is.na(df.batch)] = 0.02
+# Divides all estrogens by injection
+df.batch[,estrogen_names] = sweep(df.batch[ ,estrogen_names],df.batch[,"injection"],MARGIN=1,"/")   
+
 # Converts estrogen pg/uL to pmol/L
   df.batch$`16KE2`   =  df.batch$`16KE2`    *(1e6/ 286.36548)
   df.batch$E3        =  df.batch$E3         *(1e6/288.38136)
@@ -90,40 +71,85 @@ df.batch[,estrogen_names] = sweep(df.batch[ ,estrogen_names],df.batch[,"injectio
   df.batch$`2OHE1`   =  df.batch$`2OHE1`    *(1e6/ 286.36548)
   df.batch$`2OHE2`   =  df.batch$`2OHE2`    *(1e6/286.38136)
   df.batch$`4OHE1`   =  df.batch$`4OHE1`    *(1e6/286.36548)
+```  
+ 
   
-  
-
 ###########################################################################
 ######################    Creatinine Data      ############################
 ###########################################################################
 
-df.creatinine.list = list()  # will store all creatinine batches into one list of multiple dataframes
-for (i in 1:10){  # reads in creatinine batches 1-6
+```{r}
+df.creatinine.list = list()  #  store all creatinine batches into one list of multiple dataframes
 
-  df.creatinine.list[[i]] = as.data.frame(read_xlsx(paste0("./data/creatinine/Creatinine_Batch",as.character(i), ".xlsx"), na="QNS", skip=1))
-  colnames(df.creatinine.list[[i]])[1:4] = c("sample.id","customer.id","#","creatinine")   # renames first 4 columns to standardize format
-  df.creatinine.list[[i]] = df.creatinine.list[[i]] %>% dplyr::select(-'#')  %>% # Removes # column
-    mutate(batch.num = i, sample.id = as.character(sample.id), customer.id = as.character(customer.id),
+for (i in 1:15) {  # reads in creatinine batches 
+  df.creatinine.list[[i]] = as.data.frame(read_xlsx(paste0("./data/creatinine_data/Creatinine_Batch",as.character(i), ".xlsx"), na="QNS", skip=1))
+  colnames(df.creatinine.list[[i]])[1:2] = c("customer.id","creatinine")   
+  df.creatinine.list[[i]] = df.creatinine.list[[i]] %>%
+    mutate(creatinine.batch.num = i, customer.id = as.character(customer.id),
     	creatinine = as.numeric(ifelse(creatinine=="<2.0",NA, creatinine)))  # change <2.0 to missing
+ if (i >=11){ 
+  df.creatinine.list[[i]] = df.creatinine.list[[i]] %>%
+	mutate(customer.id = ifelse(str_detect(customer.id,regex("control",ignore_case=TRUE)),customer.id, substr(customer.id,1,nchar(customer.id)-2)))
+ }
 }
 
-df.creatinine.list[[1]]$customer.id[22:36] = str_split(df.creatinine.list[[1]]$customer.id[22:36],fixed("_"),n=3,simplify=TRUE)[,3]  # changes customer id format controls for creatinine batch 2
+df.creatinine.list[[1]]$customer.id[22:36]= str_split(df.creatinine.list[[1]]$customer.id[22:36],fixed("_"),n=3,simplify=TRUE)[,3]  # changes customer id format controls for creatinine batch 2
 df.creatinine.list[[3]]$customer.id[11] = "0082"   # changes customer id from 0080 to 0082 for creatinine batch 3
 df.creatinine.list[[4]]$creatinine = as.numeric(df.creatinine.list[[4]]$creatinine   )  # Makes creatinine numeric for batch 4
 df.creatinine.list[[4]]$creatinine[c(30,31)] = c(43.3,81.6) # Enter linear regression prediction from japan creatinine for these lab error values
-df.creatinine.list[[4]] = na.omit(df.creatinine.list[[4]]) # Removes missing values from creatinine batch 4
-df.creatinine.list[[6]]$customer.id[df.creatinine.list[[6]]$customer.id %in% c("C-21","C-22","C-23","C-24")] = c("C_21","C_22","C_23","C_24") # Relabels control customer ids in batch 6
+df.creatinine.list[[7]] = df.creatinine.list[[7]][-2,] 
+df.creatinine.list[[15]]$customer.id[df.creatinine.list[[15]]$customer.id =="K1040"] = "K1040001"
 
-df.creatinine = bind_rows(df.creatinine.list) %>% dplyr::select(customer.id,creatinine) %>% mutate(creatinine = creatinine*10) # converts creatinine mg/dL tp mg/L
+df.creatinine = bind_rows(df.creatinine.list) %>% dplyr::select(creatinine.batch.num,customer.id,creatinine) %>% mutate(creatinine = creatinine*10) # converts creatinine mg/dL tp mg/L
+```
+
+
+###### SNU replicates  #####
+```{r}
+# estrogens
+snu.replicates.estrogen2 = df.batch %>% 
+  filter(grepl('B1010022|B1040053|B1110142|K1040037|K1040092|K1040194|K1040219|K1140016|K1140017|K1140026|
+K1140067|K1140093|S1010085|S1010155|S1020021|S1110234|S1210008|S1210070|S1210075|S1220127', customer.id)) 
+
+snu.replicates.estrogen = snu.replicates.estrogen2 %>% group_by(customer.id) %>% sample_frac(0.5)
+
+#creatinines
+snu.replicates.creatinine2 = df.creatinine %>% 
+  filter(grepl('B1010022|B1040053|B1110142|K1040037|K1040092|K1040194|K1040219|K1140016|K1140017|K1140026|
+K1140067|K1140093|S1010085|S1010155|S1020021|S1110234|S1210008|S1210070|S1210075|S1220127', customer.id))
+
+snu.replicates.creatinine = snu.replicates.creatinine2 %>% group_by(customer.id) %>% sample_frac(0.5)
+
+# together
+snu.replicates = bind_cols(snu.replicates.estrogen,snu.replicates.creatinine)
+
+write.csv(bind_cols(snu.replicates.estrogen2,snu.replicates.creatinine2), file = "data/qc_data/snu.qc.csv",row.names=FALSE, na="")
+```
+
+
+
+###### controls  #####
+```{r}
+#estrogen controls
+control.estrogen = df.batch %>% 
+	filter((str_detect(customer.id, regex("control",ignore_case=TRUE)))) %>% 
+	select(-injection) %>% filter(batch.num != 8)
+
+# creatinine controls
+control.creatinine= df.creatinine%>% 
+	filter((str_detect(customer.id, regex("control",ignore_case=TRUE))))
+
+write.csv(full_join(control.estrogen,control.creatinine,by=c("customer.id")), file = "data/qc_data/control.qc.csv",row.names=FALSE, na="")
+```
 
 
 
 ###########################################################################
 ######################    Covariate Data      #############################
 ###########################################################################
-
+```{r}
 #korea (KMCC)
-df.cov.kmc = as.data.frame(read.sas7bdat("./data/covariates/kmcc_nih.sas7bdat",debug=FALSE)) %>% 
+df.cov.kmcc = as.data.frame(read.sas7bdat("./data/covariate_data/kmcc_nih.sas7bdat",debug=FALSE)) %>% 
   dplyr::rename(case = STOMACH_CANCER, customer.id = ID, age = AGE, bmi = BMI, smoking = SMOK400, 
                 alcohol = ALCOHL, education = EDUC_RE,  age.menarche = MENA, age.menopause = MENSTOP, year.fertility = FBABYAGE) %>%
   dplyr::mutate(origin = "Korea (KMCC)",
@@ -136,18 +162,18 @@ df.cov.kmc = as.data.frame(read.sas7bdat("./data/covariates/kmcc_nih.sas7bdat",d
                 customer.id = as.character(customer.id)
                 ) %>%
   dplyr::select(-area,-Case_Control,-QDATE,-YEAR,-NIH,-SEX,-STOMACH_CANCER_FU_DATE) 
-df.cov.kmc[df.cov.kmc==""] = NA # Blank cells become missing
+df.cov.kmcc[df.cov.kmcc==""] = NA # Blank cells become missing
 
 
 # Iran
 # list of pid where first relative had gastric cancer
-df.cov.iran2 = as.data.frame(read.dta13("./data/covariates/GC_fx.dta")) %>% 
+df.cov.iran2 = as.data.frame(read.dta13("./data/covariate_data/GC_fx.dta")) %>% 
  unique() %>%
   dplyr::mutate(relativegc = 2) 
 
-df.cov.iran = as.data.frame(read_xlsx("./data/covariates/Iran_temp_modified_by_CC.xlsx")) %>%
+df.cov.iran = as.data.frame(read_xlsx("./data/covariate_data/Iran_temp_modified_by_CC.xlsx")) %>%
     left_join(df.cov.iran2,by="pid") %>%  
-    dplyr::rename(case = cases, BSI_ID = 'BSI ID', batch.num = Batch, children = numberlivebirths, smoking=cig, age = agebegin) %>%
+    dplyr::rename(case = cases, BSI_ID = 'BSI ID', batch.num = Batch, smoking=cig, age = agebegin) %>%
     dplyr::mutate(customer.id = substr(Fred_Lab_ID,1,nchar(Fred_Lab_ID)-5),
                   origin = "Iran",
                  relativegc = as.factor(ifelse(is.na(relativegc),1,2)),
@@ -156,17 +182,15 @@ df.cov.iran = as.data.frame(read_xlsx("./data/covariates/Iran_temp_modified_by_C
                  case = as.factor(case),
                  alcohol = as.factor(1)) %>% 
     dplyr::filter(estrogen_data ==1) %>%
-     select(-pid_,-Label,-BSI_ID,-estrogen_data,-gender,-status,-agefin,-dxage,-Fred_Lab_ID,-relative,-order,-pid,-numberpregnancies,
-            -hookah,-nass,-relativeca,-batch.num)
+     select(-pid_,-Label,-BSI_ID,-estrogen_data,-gender,-status,-agefin,-dxage,-Fred_Lab_ID,-relative,-order,-pid,-numberpregnancies, -hookah,-nass,-relativeca,-batch.num)
 
 
 
 # Korea (SNU)
-df.cov.snu = as.data.frame(read_xlsx("./data/covariates/sgcs_urine2.xlsx",sheet="Data",na=c("9999","7777")))  %>% 
-  dplyr::rename(customer.id = ID, children = child_no, alcohol = drinking, education = edu,
+df.cov.snu = as.data.frame(read_xlsx("./data/covariate_data/sgcs_urine2.xlsx",sheet="Data",na=c("9999","7777")))  %>% 
+  dplyr::rename(customer.id = ID, alcohol = drinking, education = edu,
                 age.menarche = menarche_age, age.menopause = menopause_age, age.pregnant = preg_age,
-                oral.cont = OC, relativegc = fhx
-                ) %>%
+                oral.cont = OC, relativegc = fhx) %>%
   dplyr::mutate(origin = "Korea (SNU)", 
                 #bmi = weight / (height*height)*10000,
                 bmi = weight / ((height/100)*(height/100)),
@@ -176,9 +200,6 @@ df.cov.snu = as.data.frame(read_xlsx("./data/covariates/sgcs_urine2.xlsx",sheet=
                 smoking = recode_factor(smoking, '1'='1', '2'='2','3'='2'),
                 alcohol = recode_factor(alcohol, '1'='1', '2'='2','3'='2'),
                 case = as.factor(case),
-                Lauren = as.factor(Lauren),
-                location = as.factor(location),
-                breastfeed = as.factor(breastfeed),
                 oral.cont = as.factor(oral.cont),
                 hrt = as.factor(hrt)
                 ) %>%
@@ -187,27 +208,25 @@ df.cov.snu = as.data.frame(read_xlsx("./data/covariates/sgcs_urine2.xlsx",sheet=
 
 
 # Japan
-df.cov.japan = as.data.frame(read_xlsx("./data/covariates/Character_for_NIH_urine_Shimura_2-17-2018_modified_by_CC.xlsx",na="No data")) %>% 
+df.cov.japan = as.data.frame(read_xlsx("./data/covariate_data/Character_for_NIH_urine_Shimura_2-17-2018_modified_by_CC.xlsx",na="No data")) %>% 
   dplyr::rename(age.menarche = 'age at menarche', age.menopause = 'age at menopause', 
                 age = Age, bmi = BMI, smoking = Smoking, alcohol = Alchohol, relativegc = 'Hamily history of GC',
                 customer.id = Patient_Number) %>%
   dplyr::mutate(year.fertility = age.menopause - age.menarche, 
                 origin = "Japan",
                 case = as.factor(ifelse(str_detect(Sample_ID, fixed("Case")),1,0) ),
-                smoking = recode_factor(smoking, 'None'='1', '20 x 45y'='2', '30 x 43y'='2', '40 x 30y'='2'   ),
-                alcohol = recode_factor(alcohol,  'None'='1', 'sake 100ml/day'='2', 'sake 200ml/day'='2', 'sometimes'='2'  ),
-                relativegc = recode_factor(relativegc, 'Negative'='1', 'Presence'='2', 'Presence (Mother, Brother)'='2'),
-                H_pylori = as.factor(H_pylori + 1)
+                smoking = recode_factor(smoking,'None'='1', '20 x 45y'='2', '30 x 43y'='2', '40 x 30y'='2'),
+                alcohol = recode_factor(alcohol,'None'='1','sake 100ml/day'='2','sake 200ml/day'='2','sometimes'='2'  ),
+                relativegc = recode_factor(relativegc, 'Negative'='1', 'Presence'='2', 'Presence (Mother, Brother)'='2')
                 ) %>%
-  dplyr::select(-Sample_ID,-Japan_Creatinine)
+  dplyr::select(-Sample_ID,-Japan_Creatinine,-H_pylori)
 df.cov.japan$smoking[24] = as.factor('2')
 
 
 # Germany
-df.cov.germany = as.data.frame(read.sas7bdat("./data/covariates/ae1_gastric_cancer_20180625.sas7bdat")) %>% 
-  dplyr::rename(smoking = smostat, relativegc = famhist_gastric_ca, bmi = BMI, alcohol = alc_g_d, children = RH_N_FTP,
-               age.pregnant = RH_A_1FTP, relativegc = famhist_gastric_ca, age.menarche = RH_A_1PERC, age.menopause = RH_A_MENOP,
-               education = K55SCOL, customer.id = Sample_ID, breastfeed = RH_EVERBFEED, oral.cont = RH_EVERPILL, hrt = RH_EVER_HRT, case=casecontrol,
+df.cov.germany = as.data.frame(read.sas7bdat("./data/covariate_data/ae1_gastric_cancer_20180625.sas7bdat")) %>% 
+  dplyr::rename(smoking = smostat, relativegc = famhist_gastric_ca, bmi = BMI, alcohol = alc_g_d, 
+               age.pregnant = RH_A_1FTP, relativegc = famhist_gastric_ca, age.menarche = RH_A_1PERC, age.menopause = RH_A_MENOP, education = K55SCOL, customer.id = Sample_ID, oral.cont = RH_EVERPILL, hrt = RH_EVER_HRT, case=casecontrol,
                menopause = RH_MENOP) %>%
   dplyr::mutate(origin = "Germany",
                 case = as.factor(case),
@@ -215,46 +234,51 @@ df.cov.germany = as.data.frame(read.sas7bdat("./data/covariates/ae1_gastric_canc
                 customer.id = as.character(customer.id),
                 smoking = recode_factor(smoking, '1'='1', '2'='2','3'='2'),
                 education = recode_factor(education,  '1'='1', '2'='2', '3'='2','4'='2','5'='2', '6'='3'),
-                breastfeed = recode_factor(breastfeed, '0'='1','1'='2'),
                 oral.cont = recode_factor(oral.cont, '0'='1','1'='2'),
                 year.fertility = age.menopause - age.menarche,
                 relativegc = recode_factor(relativegc, '0'='1', '1'='2'),
                 hrt = recode_factor(hrt,'0'='1','1'='2'),
                 menopause = recode_factor(menopause,'0'='0','1'='1','2'='2','3'='3')      )%>%
   dplyr::select(-sex,-RH_EVERPREG,-RH_EVER_FTP, -RH_CUR_HRT,-RH_CURPILL,-RH_FERTIL, -RH_HYSTER,-RH_OVARIECT,-RH_EXOGHORM,-icd1,-diagdat1,-TNMT1,-TNMN1,
-                -TNMM1,-icd2,-diagdat2,-TNMT2,-TNMN2,-TNMM2)
+                -TNMM1,-icd2,-diagdat2,-TNMT2,-TNMN2,-TNMM2,-RH_EVERBFEED,-RH_N_FTP)
 df.cov.germany[df.cov.germany==9999] = NA                            
 df.cov.germany[df.cov.germany==9] = NA     
 df.cov.germany[df.cov.germany==10000] = NA                            
-df.cov.germany[df.cov.germany==10] = NA          
+df.cov.germany[df.cov.germany==10] = NA    
+
+# combines all covariates
+df.cov = full_join(df.cov.germany,df.cov.iran) %>% full_join(df.cov.japan) %>% full_join(df.cov.kmcc) %>% #full_join(df.cov.snu) %>% filter(!(customer.id %in% c("GCH00021","K1040001","K1140067")))
+full_join(df.cov.snu) %>% filter(!(customer.id %in% c("K1140067")))
+```
+
 
 ###########################################################################
 ######################    Combining Data      ##############################
 ###########################################################################
+```{r}
+#"GCH00021"
+######## combines estrogen with creatinine  ########
+df.est.creat = full_join(df.batch,df.creatinine,by=c("customer.id")) %>% 
+	# removes duplicated ids
+	filter(!(customer.id %in% c("0121","K1140067U3","K1140067","S1020100","B1310021","S1010075"))) %>% 
+	# removes controls
+	filter(!(str_detect(customer.id, regex("control|C_|Xia|Bla",ignore_case=TRUE)))) %>%
+    # removes korea snu duplicates
+	filter(!(customer.id %in% snu.replicates$customer.id)) %>%
+	# re-adds only one observation per snu duplicate
+	bind_rows(snu.replicates)  
 
-###################### Merging creatinine & covariates ######################
-df.est.creat = left_join(df.batch,df.creatinine,by=c("customer.id"))    # combines estrogen with creatinine
-
-set.seed(1)  # make radomization the same
-replicate_ids = df.est.creat %>% filter(origin=="Korea (SNU)") %>% 
-  group_by(customer.id) %>% 
-  filter(n()>1) %>% 
-  filter(!(str_detect(customer.id, regex("control",ignore_case=TRUE)))) %>%
-  sample_frac(0.5)  # Randomly selects one record for each korea snu duplicate id
-
-gch00021 = df.est.creat %>% filter(customer.id =="GCH00021") %>% sample_frac(0.5)
-df.est.creat = df.est.creat %>% filter(!(customer.id %in% c(replicate_ids$customer.id,"GCH00021" ))) %>% bind_rows(replicate_ids) %>% bind_rows(gch00021) # first removes duplicate ids then re-adds only a single observation per id
-  
-  
-df.cov = full_join(df.cov.germany,df.cov.iran) %>% full_join(df.cov.japan) %>% full_join(df.cov.kmc) %>% full_join(df.cov.snu) #%>% # combines all covariates
- # filter(!(customer.id %in% c("0080","0121")))   # Removes customer id 0080 and 0121 from covariates (duplicates)
-
+# adds covariates
 df = full_join(df.est.creat,df.cov,by=c("origin","customer.id"))  %>% # combines estrogen, creatinine, and covariates
-  mutate(alcohol = ifelse(is.na(alcohol), "9999", alcohol),
-         smoking = ifelse(is.na(smoking), "9999", smoking),
-         education = ifelse(is.na(education), "9999", education),
-         relativegc = ifelse(is.na(relativegc), "9999", relativegc)) %>%
-  filter(!(customer.id %in% c("0080","0082","0121")))   # Removes customer id 0080 and 0121 from covariates (duplicates)
+  mutate(#alcohol = ifelse(is.na(alcohol), "9999", alcohol),
+         #smoking = ifelse(is.na(smoking), "9999", smoking),
+         education = ifelse(origin=="Japan" & is.na(education), "9999", education),
+  	     education = recode_factor(education,"1"="1", "2"="2","3"="2"),
+         relativegc = ifelse(origin=="Korea (KMCC)" & is.na(relativegc), "9999", relativegc)) %>%
+  filter(!(customer.id %in% c("0080","0082","0121"))) %>%  
+  filter(hrt!=3 | is.na(hrt))%>% # Removes current hormone therapy users (but keeps missing values)
+  mutate(status = as.character(recode_factor(case, '0'="Control",'1'="Case"  ))) %>%
+	select(-numberlivebirths,-Lauren,-location,-child_no,-breastfeed)# Creates a status column
 
 ###################### Make variables factor type ######################
 df$alcohol = as.factor(df$alcohol)
@@ -264,18 +288,15 @@ df$relativegc = as.factor(df$relativegc)
 df$hrt = as.factor(df$hrt)
 df$origin = as.factor(df$origin)
 
-######################## Taking out estrogen controls and current hormone replacement#####################
-df$customer.id[df$customer.id == ""] = "control"  # Relabels blank ids as controls to take out (ids were truncated previously to match covariate ids)
-df = df %>% dplyr::filter(!(str_detect(customer.id, regex("cont|Xia|bla|C-|C_",ignore_case=TRUE)))) %>% # Deletes customer ids that contain "control", "Xia", "blank"
-  filter(hrt!=3 | is.na(hrt))%>% # Removes current hormone therapy users (but keeps missing values)
-  mutate(status = as.character(recode_factor(case, '0'="Control",'1'="Case"  )),study.status =  paste(study,"-",status)) # Creates a status column
 
+#################### standardizes estrogen columns ###################
+ df.s = sweep(df[ ,estrogen_names],df[,"creatinine"],MARGIN=1,"/")   # Divides all estrogens by creatinine
+ names(df.s) = paste0("s.",names(df.s))   # renames standardized estrogens as s.<Estrogen>
+ df = cbind(df,df.s)
+```
 
-#################### adds standardized estrogen columns ###################
-df.s = sweep(df[ ,estrogen_names],df[,"creatinine"],MARGIN=1,"/")   # Divides all estrogens by creatinine
-names(df.s) = paste0("s.",names(df.s))   # renames standardized estrogens as s.<Estrogen>
-df = cbind(df,df.s)
-
+################### adds tertile categorization for each estrogen ##########
+```{r}
 ################### adds tertile categorization for each estrogen ##########
 tertiles.control = df %>% select(colnames(df.s), origin,status) %>% 
   filter(status == "Control") %>%
@@ -284,12 +305,12 @@ tertiles.control = df %>% select(colnames(df.s), origin,status) %>%
   summarize(Q33 = quantile(Concentration, probs=1/3, na.rm=TRUE, names=FALSE),
         Q66 = quantile(Concentration, probs=2/3, na.rm=TRUE, names=FALSE))
 
-tertiles.df = df %>% select(colnames(df.s), origin,sample.id,customer.id) %>% 
+tertiles.df = df %>% select(colnames(df.s), origin,customer.id) %>% 
  gather(Estrogen, Concentration,1:15) %>% 
 inner_join(tertiles.control,by=c("origin","Estrogen")) %>%
   mutate(tertile = case_when(Concentration <= Q33 ~ 1, Concentration > Q33 & Concentration<= Q66 ~ 2,Concentration > Q66 ~ 3)) %>%
   spread(Estrogen,tertile) %>% 
-  group_by(sample.id,customer.id) %>%
+  group_by(customer.id) %>%
   summarize( t.E1 = sum(s.E1,na.rm=TRUE),     
              t.E2 = sum(s.E2,na.rm=TRUE),  
              t.4OHE1 = sum(s.4OHE1,na.rm=TRUE),  
@@ -323,14 +344,17 @@ inner_join(tertiles.control,by=c("origin","Estrogen")) %>%
              t.f.16epiE3 = as.factor(sum(s.16epiE3,na.rm=TRUE)))
 tertiles.df[tertiles.df==0] = NA
 
-df = df %>% left_join(tertiles.df,by=c("sample.id","customer.id")) 
+df = df %>% left_join(tertiles.df,by=c("customer.id")) 
 
 relev <- function(f) relevel(factor(f), ref = "1")
 df <- mutate_each(df, funs(relev), one_of(paste0("t.f.",estrogen_names)))
 
-#write.xlsx(df,"C:/Users/zhaoi2/Desktop/project/data/df_all.xlsx" , sheetName="Sheet1", col.names=TRUE, row.names=FALSE, showNA=FALSE)
-save(df,file="./data/df_all.RDA")
-#df = as.data.frame(read_xlsx("df_all.xlsx"))
+df[,estrogen_names] = df.s
+
+df = df %>% select(-one_of(colnames(df.s)))
+
+write.csv(df, file = "data/cleaned_data.csv",row.names=FALSE, na="")
+save(df,file="./data/cleaned_data.RDA")
 ```
 
 
