@@ -1,95 +1,591 @@
+---
+title: |
+  | \vspace{5cm} \LARGE{Endogenous Estrogen Metabolites and Gastric Cancer Risk Among Postmenopausal Women}
+  | \vspace{2cm} \Large{Statistical Analysis and Results}
+author: "Isaac Zhao"
+date: "01/08/19 Version 2"
+output:
+  pdf_document:
+    fig_caption: yes
+header-includes: 
+- \usepackage{graphicx}
+- \usepackage{float}
+- \usepackage{booktabs}
+---
 
 
 
-```{r}
-setwd("C:/Users/zhaoi2/Desktop/project") 
-source("./Supplemental/check_packages.R")
-source("./Supplemental/custom_cormatrix.R")  # use to load correlation matrix function
-check_packages(c("ggthemes","optimx","metafor","stringr","Hmisc","ggpubr","readxl","xlsx","sas7bdat","readstata13","gridExtra","RColorBrewer","sjPlot",
-                 "grid","lme4","ggrepel","tidyr","networkD3","dplyr","ggplot2"))
-
-# Name estrogens
-estrogen_names = c("E1", "E2", "4OHE1", "4ME1","4ME2","2OHE1","3ME1" ,"2OHE2","2ME1","2ME2","16aE1","17epiE3","E3","16KE2","16epiE3") 
-estrogen_names_long = c("Estrone (E1)", "Estradiol (E2)", "4-Hydroxyestrone (4OHE1)", "4-Methoxyestrone (4ME1)","4-Methoxyestradiol (4ME2)","2-Hydroxyestrone (2OHE1)","2-Hydroxyestrone-3-methyl ether (3ME1)" ,"2-Hydroxyestradiol (2OHE2)","2-Methoxyestrone (2ME1)","2-Methoxyestradiol (2ME2)","16alpha-Hydroxyestrone (16aE1)","17-Epiestriol (17epiE3)","Estriol (E3)","16-Ketoestradiol (16KE2)","16-Epiestriol (16epiE3)")
-estrogen_names_long2 = c("Estrone", "Estradiol", "4-Hydroxyestrone", "4-Methoxyestrone","4-Methoxyestradiol","2-Hydroxyestrone","2-Hydroxyestrone-3-methyl ether" ,"2-Hydroxyestradiol","2-Methoxyestrone","2-Methoxyestradiol","16alpha-Hydroxyestrone","17-Epiestriol","Estriol","16-Ketoestradiol","16-Epiestriol")
-estrogen_names_df = data.frame(Estrogen = estrogen_names, Nomenclature = estrogen_names_long2)
-t.estrogen_names = paste0("t.",estrogen_names)
-
-country_list = c("Germany","Japan","Korea (KMCC)", "Iran","Korea (SNU)")
-
-load("./data/df_all.RDA")
+```{r setup, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(
+	fig.path='figure/graphics-', cache.path='cache/graphics-', # sets folder for saving graphics
+    fig.align='center',external=TRUE, warning=FALSE, # alligns figures to center, no print warnings
+    fig.pos='H', table.placement='H', fig.height=12.5,  # makes tables and graphs in correct order with text
+		fig.width=12.5,
+	echo=FALSE, message=FALSE, cache=TRUE, #don't print code or messages, saves in cache
+	warn.conflicts=F,  # don't print warnings 
+	tidy=TRUE,tidy.opts=list(width.cutoff=60)) # makes printing code not run off page
+				a4width<- 8.3
+				a4height<- 9
 ```
 
 
-Correlation matrix of all Estrogens with covariates
 ```{r}
-df.cor = df %>% select(paste0("s.",estrogen_names), case, age, bmi, alcohol, smoking, education, relativegc, age.menarche,age.menopause,year.fertility )
+setwd("~/Desktop/nci_summer_project/project")
+source("Supplemental/check_packages.R")
+source("Supplemental/custom_cormatrix.R")  # use to load correlation matrix function
+check_packages(c("ggthemes","optimx","metafor","stringr","Hmisc","ggpubr","scales","readxl","sas7bdat","readstata13","gridExtra","RColorBrewer","sjPlot","readr","stargazer","knitr", "grid","lme4","ggrepel","tidyr","networkD3","kableExtra","dplyr","ggplot2"))
+load("data/cleaned_data.RDA")
+```
 
-names(df.cor)[1:15] = estrogen_names
+\newpage
+
+# Materials and Methods
+## Study Design
+```{r}
+table = as.data.frame(read_xlsx("Supplemental/study_demographics_chart/demographics_read_in.xlsx"))
+colnames(table) = c("",rep(c("Case","Control"),6))
 
 
-custom_cormatrix(df.cor, cor.method="spearman",log.transform=TRUE)
+kable(table, "latex", caption = "Demographics Table", booktabs = T) %>%
+kable_styling(latex_options = c("scale_down","hold_position"),
+	bootstrap_options = "condensed", full_width = F, position="center") %>%
+  add_header_above(c(" ", "Iran" = 2, "Korea (KMCC)" = 2, "Germany" = 2,"Korea (SNU)"=2,"Japan"=2,"Overall"=2)) %>%
+  add_header_above(c(" ", "Cohort" = 6, "Case Control" = 4," "=2)) %>%	
+	footnote(c("NA = Data not available"))
+#
+```
+
+Incident gastric cancer and two case-control studies of early-stage cancer were used for analysis. For the incident gastric cancer set, pre-diagnostic urine samples from all available postmenopausal (or age 60+ years) women diagnosed with gastric cancer and incidence-density matched controls from three prospective cohort studies (Golestan Cohort (Iran), Korean Multicenter Cancer Cohort, and ESTHER Cohort (Germany)) were tested. Iran and Korea (KMCC) were approximately 1:2 ratio of cases vs. controls. For the early-stage case-control gastric cancer set, urine samples from postmenopausal (or age 60+ years) women diagnosed with early-stage gastric cancer (AJCC clinical stages 1A [T1, N0, M0] or 1B [T1, N1, M0 or T2, N0, M0]) and 1:1 age-matched (+/- 5 years) controls from established case-control studies in Japan and Korea (Seoul Gastric Cancer Study) were tested. 
+
+Postmenopausal women with gastric cancer were matched by age to gastric cancer-free controls. Women who ever used post-menopausal hormone replacement were excluded since we were specifically interested in the effects of endogenous estrogens. Premenopausal women were also excluded since estrogen levels vary over the menstrual cycle, greatly complicating interpretation of measurements; in any case, gastric cancer is rare prior to age 50 years. On the other hand, restriction of the case-control set to stage 1 gastric cancer will limit the risk of reverse causality.
+
+Urine specimens were collected at enrollment in prospective studies and pre-treatment in case-control studies and continuously cryopreserved at -70/-80 degrees Celcius until analysis.
+
+Variables considered for covariate adjustment to estimate odds ratio effect sizes in the analysis portion were age, BMI, smoking, alcohol, education, and if the subject's relative had gastric cancer. Categories were simplified into never or ever to account for differences in how each variable was recorded for each study. This avoided ambiguous temporality and count of substance use for variables such as smoking and alcohol. Dividing into only two categories also reduced extreme sample size sparsity problems such as educational degree. 
+
+
+## Laboratory Assay
+Stable isotope dilution liquid chromatography-tandem mass spectrometry (LC-TMS) was used at the NCI Laboratory of Proteomics and Analytical Technologies, MD to simultaneously measure the total concentration of 2 parent estrogens (estrone and estradiol) and 13 estrogen metabolites (2-hydroxyestrone, 2-methoxyestrone, 2-hydroxyestradiol, 2-methoxyestradiol, 2-hydroxyestrone-3-methyl ether, 4-hydroxyestrone, 4-methoxyestrone, 4-methoxyestradiol, 16$\alpha$-hydroxyestrone, 16-ketoestradiol, estriol, 17-epiestriol, and 16-epiestriol) in an aliquot of 500 $\mu$L urine assay for each participant. In urine, parent estrogens and their metabolites are present primarily in conjugated form. Estrogen concentrations in spot urine samples were normalized to creatinine levels in order to adjust for variation in urinary volume. 
+
+```{r,results='asis'}
+read_csv("data/estrogen_data/raw.all.csv") %>% as.data.frame() %>% group_by(batch.num) %>% summarize(n=n()) %>% rename(Batch = batch.num) %>% mutate(Study = c("Germany and Korea (KMCC)",rep("Korea (KMCC)",2), "Japan", rep("Iran",4), rep("Korea (SNU)",8))) %>%
+	
+stargazer(title = "Table of estrogen batch information", header = FALSE,
+rownames = FALSE, type = "latex", single.row = TRUE, no.space = TRUE, digits=NA,
+summary = FALSE, table.placement = "H")
 ```
 
 
-boxplot of all estrogen concentrations by origin comparing cases vs controls
-```{r}
+# Results
+## Covarying Relationships Between Metabolites
+
+```{r, out.height = "250px",fig.cap="Estrogen metabolite hydroxylation pathway sankey diagram. Line thickness proportional to spearman correlations between substrates and products on hydroxylation pathways (2-OH, green; 4-OH, tan; 16-OH, pink), ranging from 0.06 to 0.67. 4-Hydroxyestradiol and 16a-Hydroxyestrone not shown due to extremely low concentrations."}
+
+knitr::include_graphics('Graphs and Tables/sankey.png')
+####
+```
+
+Correlations between metabolites were relatively equal throughout the pathways except for the 4-Hydroxylation pathway connection with the 4OHE1 metabolite. 
+
+```{r, fig.height=12.5, fig.width=15, fig.cap="Metabolite correlation matrix. Redder regions indicate stronger positive correlations. Scatterplot and histogram on log scale."}
+custom_cormatrix(df %>% select(estrogen_names),log.transform=TRUE,size=0.8)
+```
+
+The relationship between estrogen metabolites were computed using spearman correlations on log transformed concentrations. Spearman correlation was chosen to account for nonlinear relationships among the metabolites that are more resistant to outliers and influential points. Log transformations were used to better visualize the paired scatterplots due to highly skewed distributions. 
+
+The histograms show that the estrogen metabolite concentration distributions were still highly right tail skewed even after log transformations. Extremely high outliers may be an artificial result of laboratory mis-measurement and should be cautioned to be use as true values. The correlation matrix shows that all estrogens were positively associated with each other with highly significant p-values, even after adjusting for bonferonni corrections of significance levels. In other words, an individual with higher levels of one metabolite will in general have higher levels of all other metabolites as well. The strongest correlation was among parent estrogens E1 and E2, which was expected. The lowess smooth curve regression line with span 2/3 (in dark blue on the scatterplot) shows that on the log scale, there did not appear to be any major nonlinear higher order interactions (i.e. relationships were mostly linear on the log scale). Thus analysis was conducted without inclusion of polynomial terms. The span parameter was chosen as a general rule of thumb to apply to all metabolites and may not necessarily produce the best residual sum of squares, although it summarizes the true shape of relationships decently well. 
+
+
+## Not Found Data
+```{r,results='asis'}
+# view number of missing data
+missing = sapply(df %>% select(estrogen_names, creatinine), function(x) sum(is.na(x))) %>% as.data.frame()
+missing$variable = rownames(missing)
+missing = missing %>% dplyr::rename(num_missing = ".") %>%
+mutate(pct_missing = round(100*num_missing/nrow(df), 2)) %>%
+select(variable, num_missing, pct_missing) %>% 
+	rename('NF (n)' = num_missing, 'NF (%)' = pct_missing, Variable = variable)
+
+stargazer(missing, title = "Table of values not found (NF) for metabolites and creatinine", header = FALSE,
+rownames = FALSE, type = "latex", single.row = TRUE, no.space = TRUE, digits=NA,
+summary = FALSE, table.placement = "H")
+```
+
+
+```{r, fig.height=1, fig.width=4, fig.cap="Distribution of NF percent among all metabolites. Vertical line indicates median."}
+
+graph.df = missing  %>%rename(pct_missing = 'NF (%)') %>% filter(Variable != "creatinine") %>% mutate(pct_missing = pct_missing/100)
+
+ggplot(graph.df , aes(pct_missing))+
+	geom_density(fill="grey75")+
+    scale_x_continuous("",breaks=seq(0,0.3,0.05),labels=scales::percent_format(accuracy = 1))+
+	theme_classic()+
+	geom_vline(xintercept=median(graph.df$pct_missing), linetype="dashed")+
+	theme(axis.text.y=element_blank(),axis.ticks.y=element_blank(),
+    	axis.text.x =  element_text(size=7.5,face="bold"))
+#
+```
+
+The median percent of NF values for estrogen metabolites was about 5%, with 4OHE1 having the highest percentage of NF values. NF values for metabolites were caused by measurements not being identified as targeted peaks due to mis-alignment of co-eluding peaks and strong unsuppression from the LC-TMS device. The peaks could not be fully re-integrated nor enriched even after re-processing. NF values for creatinine were due to low sample volumes. The NF values were not imputed due to the unknown relationship that mis-measurement of the LC-TMS device had with the probability of of a measurement to be un-recorded. In other words, it could not be determined if the distribution of missingness was independent of laboratory procedures. 
+
+All estrogen batches were re-run to compare non-overlapping missing values (i.e. NF for a sample in the first run but not the second run), which determined that NFs did not appear to be correlated with how high or low the concentrations were. Thus, the standard approach of replacing all NF values with half lower limit of quantification (LLOQ) or lower limit of detection (LLOD) would be inappropriate. Since NF was determined to be independent of measured variables, (i.e. NF status had nothing to do with concentrations themselves) complete cases (i.e. removing all missing values) was justified and used accordingly. Furthermore, since the nature of NFs could not be fully determined, using complete cases was the safest and simplest approach. However, it should be noted that results that are borderline significant at the $\alpha$=0.05 level may change if NF values were treated differently or corrected instead. Sensitivity analysis or "worst-case-scenario" imputation (i.e. replacing all NF values with all high values or all low values) may also be considered if the laboratory cannot amend accordingly.
+
+NF values that were missing in both batch runs could not be determined if the nature was due to falling in the LLOD or not. However, since metabolites were strongly correlated with one another, one possibility to diagnose is to plot one metabolite vs. another metabolite most correlated and see where the NF values lie. 
+
+## Quality Control (QC) Analysis
+
+Laboratory personnel was blinded to the case-control status of sample donors. A quality control (QC) set of 20 masked duplicate samples plus 4 additional laboratory control replicates from subjects with high available volumes representative of all studies was performed. Coefficient of variation (CV) and intraclass correlation coefficient (ICC) was calculated for standardized estrogen metabolite concentrations for the QC samples to assess within- and between-batch variations for assay reliability. The formula used to calculate ICC was $\frac{\sigma^2_{bs}}{\sigma^2_{bs}+\sigma_{bb}+\sigma^2_{ws}}$ and the formula for the computation of CV was $\frac{\sqrt{\sigma^2_{ws}+\sigma^2_{bb}}}{\mu}$; where $\sigma^2_{bs}$ = variance between subject, $\sigma^2_{bb}$ = variance between batch, and $\sigma^2_{ws}$ = variance within subject. The variance components were computed using a two stage multilevel model with varying intercept for ID and batch. 
+
+Since concentrations were highly skewed, log-transformed concentrations were also computed for ICC but not for CV. Estrogen concentrations were log transformed to improve normality of distributions to meet assumptions necessary for the computation of variance - otherwise the interpretation could be misleading due to exaggerated variance components. A constant of 1 was added to all metabolite concentrations before log transformations to ensure the resulting mean concentrations were all positive values since many un-transformed concentrations were close to 0. The same constant was applied to each metabolite regardless of specific minimum concentrations per metabolite for consistency and comparability. CV could not be calculated on the log scale due to the constant added term affecting the mean component, which would otherwise produce negative log mean concentrations on the original scale.
+
+NF values were treated as missing and were not included in calculations since any estimated numeric representations may give biased results. In other words, replacing missing values with expected values from a prediction model would favor a better reproducibility measurement). The lower limit of quantitation (LLOQ) for each analyte was 0.04 ng/mL. The median for each sample was well above the LLOQ and thus was not a major concern. However, samples with lower concentrations (i.e. postmenopausal sample) showed higher variance since the measurement device is less sensitive at these levels. Thus, CV was calculated for the post-menopausal sample by itself; otherwise the ICC and CV measurements from mixing all four samples together would be a mis-representative measure of the study population of all postmenopausal women. 
+
+
+### Laboratory Control QC Analysis
+```{r,results='asis'}
+control.qc <- read_csv("data/qc_data/control.qc.csv") %>% 
+	as.data.frame() %>%   
+	# assigns qc labels to ids
+	mutate(ID = c("A","D","A","D", # batch 1
+                    "B","B","D","D", # batch 2
+                    "E","B","B","E", # batch 3
+                    "D","E","E","D",  # batch 4
+                    "E","E","B","B", # batch 5
+                    "B","D","B","D", # batch 6
+                    "A","A","B","B", # batch 7 (batch 8 is duplicated)
+                    "B","B","E","E",  # batch 9
+		            "E","E","D","D", # batch 10
+		            "D","D","B","B", # batch 11
+ 					"B","B","A","A", # batch 12
+ 					"B","B","E","E", # batch 13
+					"E","E","D","D", # batch 14
+ 					"D","D","B","B", # batch 15
+ 					"B","B","A","A")) # batch 16
+
+# divides estrogen by creatinine
+control.qc[,estrogen_names] = sweep(control.qc[,estrogen_names],control.qc[,"creatinine"],MARGIN=1,"/")  
+
+qc.df = control.qc %>%
+  gather(Estrogen,Concentration,estrogen_names) %>%
+  mutate(batch.num = as.factor(batch.num), ID = as.factor(ID)) %>% 
+  group_by(Estrogen)
+
+
+qc.stats = qc.df %>% mutate(Concentration.l = log(Concentration+1)) %>%
+	# between subject variance log
+  summarize(
+  		# between subject variance log
+  	s2_between_subject = VarCorr(lmer(Concentration ~ 1+ (1|ID) + (1|batch.num)))$ID[1],  
+  	# between batch variance
+    s2_between_batch = VarCorr(lmer(Concentration ~ 1+ (1|ID) + (1|batch.num)))$batch.num[1] ,   
+  	# within subject variance
+    s2_within_subject = (attr(VarCorr(lmer(Concentration ~ 1+ (1|ID) + (1|batch.num))), "sc"))^2,
+  	
+  	s2_between_subject.l = VarCorr(lmer(Concentration.l ~ 1+ (1|ID) + (1|batch.num)))$ID[1],  
+  	# between batch variance
+    s2_between_batch.l = VarCorr(lmer(Concentration.l ~ 1+ (1|ID) + (1|batch.num)))$batch.num[1] ,   
+  	# within subject variance
+    s2_within_subject.l = (attr(VarCorr(lmer(Concentration.l ~ 1+ (1|ID) + (1|batch.num))),"sc"))^2 ,
+  	# mean
+    mean_concentration = mean(Concentration,na.rm=TRUE)) %>%
+  mutate(
+  	# computes ICC
+  	ICC = 100*(s2_between_subject/(s2_between_subject+s2_within_subject+s2_between_batch)),
+  	# computes ICC log
+  	ICC.l = 100*(s2_between_subject.l/(s2_between_subject.l+s2_within_subject.l+s2_between_batch.l)),
+  	# computes CV
+    CV = 100*(sqrt(s2_within_subject + s2_between_batch)/mean_concentration)) %>%
+	arrange(factor(Estrogen,levels=estrogen_names)) %>%
+	select(Estrogen, s2_between_subject,s2_between_batch,s2_within_subject,mean_concentration,ICC,CV,
+		s2_between_subject.l,s2_between_batch.l,s2_within_subject.l,ICC.l)
+
+
+kable(qc.stats, "latex", caption = "Laboratory control QC samples reproducibility calculations", booktabs = T,digits=2, col.names=c("Estrogen","$\\sigma^2_{bs}$","$\\sigma^2_{bb}$","$\\sigma^2_{ws}$","Mean","ICC","CV","$\\sigma^2_{bs}$","$\\sigma^2_{bb}$","$\\sigma^2_{ws}$","ICC"), escape=F) %>%
+  add_header_above(c(" ", "Original Scale" = 6, "Log Transformed" = 4)) %>%
+kable_styling(latex_options = c("scale_down","hold_position"),
+	bootstrap_options = "condensed", full_width = F, position="center") %>%
+	footnote(c("Log transformations calculated by log(concentration+1)","bs = between subject, bb = between batch, ws = within subject","Units in pmol/mg creatinine"))
+```
+
+```{r, fig.height=2, fig.cap="Distribution of CV and ICC for all metabolites for laboratory control QC samples. Vertical line indicates median."}
+
+graph.df = qc.stats %>%  rename('ICC (log)' = ICC.l) %>% gather(var1,var2,c(CV,ICC,'ICC (log)')) %>%
+	mutate(var2 = var2/100)
+graph.df2 = graph.df %>% group_by(var1) %>% summarize(median = median(var2))
+
+ggplot(graph.df, aes(var2))+
+	geom_density(aes(y=..scaled..),fill="grey75")+
+    scale_x_continuous("",labels=scales::percent_format(accuracy = 1))+
+	theme_classic()+
+	ylab("Density")+
+	geom_vline(data=graph.df2,aes(xintercept=median), linetype="dashed")+
+		facet_wrap(~var1,ncol=3,nrow=1,scales="free")+
+	theme(axis.text.y=element_blank(),axis.ticks.y=element_blank(),
+    	strip.text.x = element_text(size = 15,face="bold"), 
+    	axis.text.x =  element_text(size=10,face="bold"))
+
+```
+
+```{r, fig.height=8.5, fig.cap="Four laboratory control QC sample IDs (x-axis) plotted against measured standardized concentrations. Batch identification indicated by color and shape."}
+ggplot(qc.df %>% group_by() %>%mutate(Estrogen = factor(as.factor(Estrogen), levels=estrogen_names)),aes(x=ID,y=Concentration)) +
+		stat_boxplot(geom ='errorbar',alpha=0.5) + 
+  geom_boxplot(color="grey90",outlier.shape = NA,alpha=0.5)+
+  geom_jitter(aes(color=batch.num,shape=batch.num),size=3,alpha=0.7, width=0.2,height=0,show_guide = TRUE) +
+  scale_shape_manual(values=1:nlevels(qc.df$batch.num))+
+  theme_classic() +  
+		geom_vline(xintercept=1:4,color="grey50",linetype="dotted" )+
+  scale_y_log10("Estrogen concentration (pmol/mg creatinine)")	+
+  xlab("ID") + 
+  facet_wrap(~ Estrogen,scales="free",ncol=5) +
+  theme(legend.position="none",strip.text.x = element_text(size =12.5,face="bold"), 
+  	    axis.text.x=element_blank(),
+        axis.text.y =  element_text(size=10, face="bold"))
+```
+
+
+The laboratory control QC samples consisted of 4 distinct urine sample types: 2 pre-menopausal (n=8 and 16), 1 post-menopausal (n=22), and 1 male urine (n=14), totaling 60 observations. In order to assess within and between variation, four samples were allocated within in each batch, some of which had duplicate sample types in the same batch.
+
+Most metabolites had ICCs $\geq$ 75% with most CVs $\leq$ 50%, indicating moderate reproducibility generalizable across all batches. The QC samples plotted on the log scale illustrated that a few measurements for the same sample were many fold different than their counterparts. Two batches were specifically problematic, often having measurments many fold higher than other batches across different estrogens. Concentrations of these batches were not adjusted downwards since the sample size of QC samples in these batches were not sufficient enough for justification. Within subject variation was so significant that when concentrations were classified into tertiles, many replicates were in different tertile categories. 
+
+### Korea SNU QC Analysis
+```{r,results='asis'}
+snu.qc = read_csv("data/qc_data/snu.qc.csv") %>% 
+	as.data.frame() %>% arrange(customer.id)
+
+# divides estrogen by creatinine
+snu.qc[,estrogen_names] = sweep(snu.qc[,estrogen_names],snu.qc[,"creatinine"],MARGIN=1,"/")  
+
+qc.df = snu.qc %>%
+  rename(ID = customer.id) %>%
+  gather(Estrogen,Concentration,estrogen_names) %>%
+  mutate(batch.num = as.factor(batch.num), ID = as.factor(ID))%>%
+  group_by(Estrogen)
+
+qc.stats = qc.df %>% mutate(Concentration.l = log(Concentration+1)) %>%
+	# between subject variance log
+  summarize(
+  		# between subject variance log
+  	s2_between_subject = VarCorr(lmer(Concentration ~ 1+ (1|ID) + (1|batch.num)))$ID[1],  
+  	# between batch variance
+    s2_between_batch = VarCorr(lmer(Concentration ~ 1+ (1|ID) + (1|batch.num)))$batch.num[1] ,   
+  	# within subject variance
+    s2_within_subject = (attr(VarCorr(lmer(Concentration ~ 1+ (1|ID) + (1|batch.num))), "sc"))^2,
+  	
+  	s2_between_subject.l = VarCorr(lmer(Concentration.l ~ 1+ (1|ID) + (1|batch.num)))$ID[1],  
+  	# between batch variance
+    s2_between_batch.l = VarCorr(lmer(Concentration.l ~ 1+ (1|ID) + (1|batch.num)))$batch.num[1] ,   
+  	# within subject variance
+    s2_within_subject.l = (attr(VarCorr(lmer(Concentration.l ~ 1+ (1|ID) + (1|batch.num))),"sc"))^2 ,
+  	# mean
+    mean_concentration = mean(Concentration,na.rm=TRUE)) %>%
+  mutate(
+  	# computes ICC
+  	ICC = 100*(s2_between_subject/(s2_between_subject+s2_within_subject+s2_between_batch)),
+  	# computes ICC log
+  	ICC.l = 100*(s2_between_subject.l/(s2_between_subject.l+s2_within_subject.l+s2_between_batch.l)),
+  	# computes CV
+    CV = 100*(sqrt(s2_within_subject + s2_between_batch)/mean_concentration)) %>%
+	arrange(factor(Estrogen,levels=estrogen_names)) %>%
+	select(Estrogen, s2_between_subject,s2_between_batch,s2_within_subject,mean_concentration,ICC,CV,
+		s2_between_subject.l,s2_between_batch.l,s2_within_subject.l,ICC.l)
+
+
+kable(qc.stats, "latex", caption = "Korea SNU QC samples reproducibility calculations", booktabs = T,digits=2, col.names=c("Estrogen","$\\sigma^2_{bs}$","$\\sigma^2_{bb}$","$\\sigma^2_{ws}$","Mean","ICC","CV","$\\sigma^2_{bs}$","$\\sigma^2_{bb}$","$\\sigma^2_{ws}$","ICC"), escape=F) %>%
+  add_header_above(c(" ", "Original Scale" = 6, "Log Transformed" = 4)) %>%
+kable_styling(latex_options = c("scale_down","hold_position"),
+	bootstrap_options = "condensed", full_width = F, position="center") %>%
+	footnote(c("Log transformations calculated by log(concentration+1)","bs = between subject, bb = between batch, ws = within subject","Units in pmol/mg creatinine"))
+```
+
+```{r, fig.height=2, fig.cap="Distribution of CV and ICC for all metabolites for Korea SNU QC samples. Vertical line indicates median."}
+graph.df = qc.stats %>%  rename('ICC (log)' = ICC.l) %>% gather(var1,var2,c(CV,ICC,'ICC (log)')) %>%
+	mutate(var2 = var2/100)
+graph.df2 = graph.df %>% group_by(var1) %>% summarize(median = median(var2))
+
+ggplot(graph.df, aes(var2))+
+	geom_density(aes(y=..scaled..),fill="grey75")+
+    scale_x_continuous("",labels=scales::percent_format(accuracy = 1))+
+	theme_classic()+
+	ylab("Density")+
+	geom_vline(data=graph.df2,aes(xintercept=median), linetype="dashed")+
+		facet_wrap(~var1,ncol=3,nrow=1,scales="free")+
+	theme(axis.text.y=element_blank(),axis.ticks.y=element_blank(),
+    	strip.text.x = element_text(size = 15,face="bold"), 
+    	axis.text.x =  element_text(size=10,face="bold"))
+```
+
+```{r, fig.height=8.5, fig.cap="19 Korea SNU QC sample IDs (x-axis) plotted against measured standardized concentrations. Batch identification indicated by color and shape."}
+ggplot(qc.df %>% group_by() %>%mutate(Estrogen = factor(as.factor(Estrogen), levels=estrogen_names)),aes(x=ID,y=Concentration)) +
+  geom_jitter(aes(color=batch.num,shape=batch.num),size=3,alpha=0.7, width=0.2,height=0,show_guide = TRUE) +
+  scale_shape_manual(values=1:nlevels(qc.df$batch.num))+
+  theme_classic() +  
+	geom_vline(xintercept=1:19,color="grey50",linetype="dotted" )+
+  scale_y_log10("Estrogen concentration (pmol/mg creatinine)")	+
+  xlab("ID") + 
+  facet_wrap(~ Estrogen,scales="free",ncol=5) +
+  theme(legend.position="none",strip.text.x = element_text(size =12.5,face="bold"), 
+  	    axis.text.x=element_blank(),
+        axis.text.y =  element_text(size=10, face="bold"))
+
+```
+
+
+The Korea SNU replicates consisted of 19 unique samples each with two measurements that were either both in the same batch or across different batches, totaling 38 observations. Most metabolites had ICCs $\geq$ 50% with most CVs $\leq$ 60%, indicating moderately inconsistent measurements. Replication results for Korea SNU duplicates was worse than over all batches assessed with laboratory control samples. Many measurements for the same sample were many fold different than their counterparts. Thus, it should be noted that metabolite measurements for Korea SNU may not be reproducible and caution is advised.
+
+
+## Assessing Association between Covariates and Gastric Cancer
+```{r,fig.height=5}
+data = df %>% select(status,age, bmi, education, alcohol, smoking, relativegc, origin)
+
+
+p1 = ggplot(data, aes(status,age))+
+	geom_boxplot(fill="grey75") +
+	stat_compare_means(method="t.test",na.rm=TRUE,paired=FALSE,label.x=0.75)+
+	theme_classic()+
+	xlab("") +
+		theme(axis.text.x =  element_text(size=10,face="bold"))
+
+
+p2 = ggplot(data, aes(status,bmi))+
+	geom_boxplot(fill="grey75") +
+	stat_compare_means(method="wilcox.test",na.rm=TRUE,paired=FALSE,label.x=0.75)+
+	theme_classic()+
+	xlab("")+
+		theme(axis.text.x =  element_text(size=10,face="bold"))
+
+
+p3 = ggplot(data %>% filter(education != "9999") %>% filter(!(is.na(education))), aes(status))+
+	geom_bar(aes(fill=education),position="fill",color="black") +
+	scale_fill_grey("",start=0.6, labels=c("Never","Ever") )+
+	theme_classic()+
+	scale_y_continuous("Education",labels=scales::percent)+
+	xlab("")+
+		theme(axis.text.x =  element_text(size=10,face="bold"))
+
+p4 = ggplot(data %>% filter(alcohol != "9999") %>% filter(!(is.na(alcohol))), aes(status))+
+	geom_bar(aes(fill=alcohol),position="fill",color="black") +
+	scale_fill_grey("",start=0.6, labels=c("Never","Ever") )+
+	theme_classic()+
+	scale_y_continuous("Alcohol",labels=scales::percent)+
+	xlab("")+
+		theme(axis.text.x =  element_text(size=10,face="bold"))
+
+p5 = ggplot(data %>% filter(smoking != "9999") %>% filter(!(is.na(smoking))), aes(status))+
+	geom_bar(aes(fill=smoking),position="fill",color="black") +
+	scale_fill_grey("",start=0.6, labels=c("Never","Ever") )+
+	theme_classic()+
+	scale_y_continuous("Smoking",labels=scales::percent)+
+	xlab("")+
+		theme(axis.text.x =  element_text(size=10,face="bold"))
+
+p6 = ggplot(data %>% filter(relativegc != "9999") %>% filter(!(is.na(relativegc))), aes(status))+
+	geom_bar(aes(fill=relativegc),position="fill",color="black") +
+	scale_fill_grey("",start=0.6, labels=c("Never","Ever") )+
+	theme_classic()+
+	scale_y_continuous("Relative w/ GC",labels=scales::percent)+
+	xlab("")+
+		theme(axis.text.x =  element_text(size=10,face="bold"))
+
+ggarrange(p1,p2,p3,p4,p5,p6,nrow=1,ncol=6,widths=rep(0.5,6), common.legend=TRUE,legend=c("bottom"))
+```
+
+Cases were on average an older age while controls had a higher BMI on aveage. Other covariates of education, alcohol, smoking, and relative with gastric cancer did not have major differences in distribution between cases and controls. Thus, it is expected that adjusting for age and BMI in the logistic model will ultimately reduce the effect size of the metabolite than if the metabolite was used in the model itself as a main effect. However, adjusting for other covariates should not affect the metabolite estimated effect size significantly, but may inflate variance if samples in one group are sparse. Since adjusting for these other covariates should theoretically have effect sizes approximately centered to the same degree as not adjusting for these covariates, it is justifiable to remove certain covariates from each study model to optimize the bias-variance tradeoff.
+
+## Assessing Association between Estrogens and Gastric Cancer
+
+```{r,fig.cap="Study specific Wilcoxon-Mann-Whitney tests for cases vs. controls"}
 ###################################
-a = df %>% select(paste0("s.",estrogen_names), origin,status) %>% filter(!(is.na(status))) %>%
-  #filter(origin %in% c("Germany", "Japan", "Korea (KMCC)", "Iran", "Korea (SNU)")) %>% 
-  mutate(status=as.factor(status)) 
-colnames(a)[1:15] = estrogen_names
-a = a %>% gather(Estrogen,Concentration,1:15)  %>% mutate(Estrogen = factor(as.factor(Estrogen),levels = estrogen_names))
+boxplot.df = df %>% select(estrogen_names, origin,status) %>% filter(!(is.na(status))) %>%
+  gather(Estrogen,Concentration,1:15)%>% 
+  mutate(Estrogen = factor(as.factor(Estrogen),levels = estrogen_names),status=as.factor(status),
+  	origin = factor(as.factor(origin),levels=country_list))
 
-ggplot(a, aes(x=origin,y=Concentration, fill=status)) +
-  geom_boxplot(color="black",alpha=0.7) +
-  theme_classic()+
-  scale_fill_brewer("BrBG")+
-  stat_compare_means(aes(group = status), method="wilcox.test",label.y=3, label= "p.format")+
-  scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),
-              labels = scales::trans_format("log10", scales::math_format(10^.x))) +
-facet_wrap(~ Estrogen, scales="free",ncol=5) +
+estrogen_max = boxplot.df %>% group_by(Estrogen) %>% summarize(max = max(Concentration,na.rm=TRUE)) %>% 
+  mutate(Estrogen = factor(as.factor(Estrogen), levels=estrogen_names))
+
+blank = data.frame(Estrogen = rep(estrogen_max$Estrogen,2), x=0,y=c(0-estrogen_max$max/15,7*estrogen_max$max)) %>% arrange(Estrogen)
+
+boxplot.output = ggplot(boxplot.df, aes(x=origin,y=Concentration, fill=status)) +
+  geom_boxplot(color="black") +
+		scale_fill_grey(start=0.6)+
+	  scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),labels = scales::trans_format("log10", scales::math_format(10^.x))) +
+  theme_bw() +
+	facet_wrap(~ Estrogen, scales="free",ncol=5) +
+  stat_compare_means(aes(group = status), method="wilcox.test", label= "p.signif",hide.ns=TRUE) +
   xlab("")+
-  ylab("")+
-    theme(strip.text.x = element_text(size = 22.5,face="bold"), axis.text.x =  element_text(size=8,face="bold"), axis.text.y =  element_text(size=8,face="bold"), legend.title=element_blank()) 
+  ylab("Concentration (pmol/mg creatinine)")+
+	  geom_blank(data = blank, aes(x = x, y = y,fill=NULL))+
+    theme(
+    	strip.text.x = element_text(size = 10,face="bold"), 
+    	axis.text.x =  element_text(size=7,face="bold",angle=23,hjust=1), 
+    	axis.text.y =  element_text(size=7,face="bold"), 
+    	legend.title=element_blank(),
+    	legend.position="bottom")
+
+ggsave(file.path("Graphs and Tables", "boxplot.output.png"),
+             boxplot.output, width=7.5, height=7)
+
+knitr::include_graphics('Graphs and Tables/boxplot.output.png')
 ```
 
+Postmenopausal women with gastric cancer was compared with controls for both pre-diagnostic and early-stage case-control sample sets. Each study was analyzed seperately to account for differences in the relationship between estrogens and gastric cancer by country of origin and study type. Each of the estrogen markers were separately analyzed to assess an association with gastric cancer. Wilcoxon-Mann-Whitney (also known as Mann-Whitney U) test was used to compare estrogen marker concentrations as a continuous value between cases and controls. Significance levels are indicated by stars above boxplots ($*: p\leq0.05, **: p\leq0.01, ***: p\leq0.001, ****: p\leq0.0001$). According to the boxplot comparisons, over half of the metabolites had cases that had significantly higher concentrations for cases than controls at the $\alpha$=0.05 level for Korea SNU. However, the three metabolites that were significant for Korea KMCC (4ME2, 17epiE3, 16epiE3) showed the opposite association (i.e. controls had significantly higher levels of these metabolites compared to cases). These striking differences of associations of Korea SNU vs. Korea KMCC may indicate an inherent flaw that needs to be studied more closely since it should not be expected that different study designs of cohort and early-stage case-control should affect observed associations drastically. 
 
-boxplot of all estrogen concentratons comparing cases vs controls
-```{r}
-a = df %>% select(paste0("s.",estrogen_names), origin,status) %>% filter(!(is.na(status))) %>%
-  filter(origin %in% c("Germany", "Japan", "Korea (KMCC)", "Iran", "Korea (SNU)")) %>% mutate(status=as.factor(status)) 
-colnames(a)[1:15] = estrogen_names
-a = a %>% gather(Estrogen,Concentration,1:15)  %>% mutate(Estrogen = factor(as.factor(Estrogen),levels = rev(c(estrogen_names))))
 
-ggplot(a, aes(x=Estrogen,y=Concentration,fill=status))+
-    geom_boxplot() +
-  scale_fill_brewer("BrBG")+
-    theme_classic()+
-  scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),labels = scales::trans_format("log10", scales::math_format(10^.x))) +
-    ylab("Concentration (pmol/mg creatinine)")+
-  xlab("") +
-  coord_flip()+
-    #  geom_point(data = a %>% group_by(Estrogen) %>% summarize(median=median(Concentration,na.rm=TRUE)), aes(x=Estrogen,y=median,fill=NA), shape= 5,size = 2, color = "black")+
-    theme(axis.title = element_text(size=15,face="bold"), axis.text.y =  element_text(size=15, face="bold"), axis.text.x =  element_text(size=15, face="bold"),
-          legend.title=element_blank(),
-          legend.position=c(0.91,0.05), legend.background = element_rect(color = "black", size = 1, linetype = "solid"))  +
-  guides(fill = guide_legend(reverse = TRUE))
+```{r,results='asis'}
+table = list()
+for (i in 1:length(country_list)){
+table[[i]] = df %>% filter(status=="Control") %>% select(origin,estrogen_names) %>% 
+	gather(Estrogen,Concentration,estrogen_names) %>% 
+	filter(origin==country_list[i])%>%
+	group_by(origin,Estrogen) %>%
+	summarize(var1 = paste0(round(median(Concentration,na.rm=TRUE),2), " (",
+		round(quantile(Concentration, probs=1/3, na.rm=TRUE, names=FALSE),2),", ",
+		round(quantile(Concentration, probs=2/3, na.rm=TRUE, names=FALSE),2),
+		")")) %>%
+	arrange(factor(origin, levels = country_list))
+		
+}
+table = bind_cols(table) %>% group_by()%>%
+	select(-contains("origin")) %>% arrange(factor(Estrogen,levels=estrogen_names)) %>%
+	select(-contains("Estrogen"))
+
+rownames(table) = estrogen_names_long
+colnames(table) = rep("Median (Tertile)",5)
+
+
+kable(table, "latex", caption = "Estrogen concentration median and tertile cutpoint", booktabs = T) %>%
+	add_header_above(c("","Iran", "Korea (KMCC)","Germany","Korea (SNU)","Japan")) %>%
+  add_header_above(c(" ", "Cohort" = 3, "Case Control" = 2)) %>%
+kable_styling(latex_options = c("scale_down","hold_position")) %>%
+	footnote(c("Tertile (33% and 66% quantiles) determined by control subjects","Units in pmol/mg creatinine"))
 ```
 
+Study-specific estrogen marker tertiles were defined by the concentration distribution in controls to account for the extremely skewed distributions and improve interpretability. Tertile categories were treated as a numeric entry rather than a factor type to assess overall linear associations (i.e. $\beta$ coefficient for metabolite markers interpreted as risk difference from one tertile to the next). Since reproducibility was poor, it may be worth increasing the number of quantiles such that variance of measurement will not have such drastic changes on categorization. For example, a measurement categorized in tertile 2 could have also been in tertile 1 or 3 if measured again - changing the difference to the extreme low or high end. Finer tuning into deciles where the measurement would be categorized in decile 5 would not restrict the measurement to be placed in the extreme low or high end. Korea SNU appeared to have lower estrogen concentrations than other studies, especially for the metabolites with high concentrations overall (E1, 2OHE1, E3). 
 
 
-Meta analysis random effect where estrogen tertile is numeric 
+```{r,fig.height=3,fig.width=5, fig.cap="Forestplot of fully adjusted pooled random effect meta-analysis logistic regression model"}
+model3= list()
+for (j in 1:5){ 
+country.df= df %>% filter(origin==country_list[j]) %>% select(origin,case,t.estrogen_names,age,bmi,alcohol,smoking,relativegc,education)
+model3[[j]] = data.frame(origin=country_list[j],estrogen = c(estrogen_names),estimate=rep(NA,15), variance=rep(NA,15), lower = rep(NA,15), upper = rep(NA,15))
+#
+
+if (j==3){ # for germany
+ for (k in c(1,2,4:15)){
+  model = summary(glm(as.formula(paste0("case", " ~ ", (paste(t.estrogen_names[k], "age","bmi", sep="+")))), data=country.df,  family=binomial(link="logit")))$coef
+  
+  model3[[j]]$estimate[k] = model[2,1]
+ model3[[j]]$variance[k] = (model[2,2])^2
+ model3[[j]]$lower[k] = model[2,1]-1.96*model[2,2]
+ model3[[j]]$upper[k] = model[2,1]+1.96*model[2,2]
+ }
+  } else if (j==5){ # for japan
+  for (k in 1:15){
+  model = summary(glm(as.formula(paste0("case", " ~ ", (paste(t.estrogen_names[k], "age","bmi","relativegc", sep="+")))), data=country.df,  family=binomial(link="logit")))$coef
+  
+   model3[[j]]$estimate[k] = model[2,1]
+ model3[[j]]$variance[k] = (model[2,2])^2
+ model3[[j]]$lower[k] = model[2,1]-1.96*model[2,2]
+ model3[[j]]$upper[k] = model[2,1]+1.96*model[2,2]
+  }
+ } else if (j==2){ # for korea (KMCC)
+  for (k in 1:15){
+  model = summary(glm(as.formula(paste0("case", " ~ ", (paste(t.estrogen_names[k], "age","smoking","bmi","education", sep="+")))), data=country.df,  family=binomial(link="logit")))$coef
+  
+   model3[[j]]$estimate[k] = model[2,1]
+ model3[[j]]$variance[k] = (model[2,2])^2
+ model3[[j]]$lower[k] = model[2,1]-1.96*model[2,2]
+ model3[[j]]$upper[k] = model[2,1]+1.96*model[2,2]
+  }
+ } else if (j==1){ # for iran
+  for (k in 1:15){
+  model = summary(glm(as.formula(paste0("case", " ~ ", (paste(t.estrogen_names[k], "age","bmi","education", sep="+")))), data=country.df,  family=binomial(link="logit")))$coef
+ 
+   model3[[j]]$estimate[k] = model[2,1]
+ model3[[j]]$variance[k] = (model[2,2])^2
+ model3[[j]]$lower[k] = model[2,1]-1.96*model[2,2]
+ model3[[j]]$upper[k] = model[2,1]+1.96*model[2,2]
+   }
+ } else if (j==4){ # for korea snu
+  for (k in 1:15){
+  model = summary(glm(as.formula(paste0("case", " ~ ", (paste(t.estrogen_names[k], "age","smoking","bmi","education","relativegc", sep="+")))), data=country.df,  family=binomial(link="logit")))$coef
+  
+   model3[[j]]$estimate[k] = model[2,1]
+ model3[[j]]$variance[k] = (model[2,2])^2
+ model3[[j]]$lower[k] = model[2,1]-1.96*model[2,2]
+ model3[[j]]$upper[k] = model[2,1]+1.96*model[2,2]
+  }
+ }
+ }
+model3 = bind_rows(model3) %>% mutate(variance = ifelse(variance>1000,NA,variance))
+
+
+meta.model3 = data.frame(origin="Overall Random Effect",estrogen = estrogen_names,estimate=rep(NA,15), variance=rep(NA,15),lower = rep(NA,15), upper = rep(NA,15))
+
+#par(mar=c(1,1,1,1))
+#par(mfrow = c(3, 5))
+for (i in 1:15){
+data = model3 %>%filter(estrogen==estrogen_names[i])
+model = rma(yi=data$estimate,vi=data$variance,method="REML" )   # random effect model meta analysis
+#model = rma(yi=data$estimate,vi=data$variance,method="FE" )   # random effect model meta analysis
+meta.model3$estimate[i] = model$beta
+meta.model3$variance[i] = (model$se)^2
+meta.model3$lower[i] = model$ci.lb
+meta.model3$upper[i] = model$ci.ub
+#forest(model,atransf=exp, slab=country_list,psize=0.9,xlab=estrogen_names[i],at=log(c(.25,1,2,5)), xlim=c(-1,5), cex=.9)
+}
+
+meta.model3[,3:6] = sapply(meta.model3[,3:6], exp) %>% as.data.frame()
+
+ggplot(meta.model3 %>% mutate(estrogen = factor(estrogen,levels=rev(estrogen_names))), aes(x = estrogen,y = estimate))+
+    geom_pointrange(aes(ymin = lower, ymax = upper),size=0.5) +
+    geom_errorbar(aes(ymin=lower, ymax=upper),width=0.25,cex=0.5)+   
+    ylab("Odds Ratio (95% CI)") +
+    scale_y_log10(breaks = c(0.25,0.5,1,1.5,2,3,5), labels=c(0.25,0.5,1,1.5,2,3,5))+
+	theme_bw() +
+    geom_hline(aes(fill=model),yintercept =1, linetype="dotted",size=1)+
+    xlab("")+
+    theme(axis.text.y=element_text(face="bold",size=10),
+          axis.text.x=element_text(face="bold",size=10))+
+    coord_flip()
+
+```
+
+Odds ratios (OR) and corresponding 95% confidence intervals (CI) were calculated using random effects maximum likelihood for each estrogen marker using multivariable unconditional logistic regression adjusted for age, body mass index, smoking, alcohol, education, and family history of gastric cancer as available. All studies could not be adjusted for all covariates due to either uncollected data or sparisty in categories. The model for Japan did not include education and Korea (KMCC) did not include family history of gastric cancer due to data not being collected for these covariates.
+
+Multivariate logistic model used for each study:
+
+* Iran: $log(\frac{\pi}{1-\pi}) = \beta_0 + \beta_1E_i + \beta_2age + \beta_3BMI + \beta_4education$ 
+
+* Korea (KMCC): $log(\frac{\pi}{1-\pi}) = \beta_0 + \beta_1E_i + \beta_2age + \beta_3BMI + \beta_4education + \beta_5smoke$ 
+
+* Germany: $log(\frac{\pi}{1-\pi}) = \beta_0 + \beta_1E_i + \beta_2age + \beta_3BMI$ 
+
+* Korea (SNU):  $log(\frac{\pi}{1-\pi}) = \beta_0 + \beta_1E_i + \beta_2age + \beta_3BMI + \beta_4education + \beta_5smoke + \beta_6GC relative$ 
+
+* Japan: $log(\frac{\pi}{1-\pi}) = \beta_0 + \beta_1E_i + \beta_2age + \beta_3BMI + \beta_4GC relative$ 
+
+Where $\pi = Pr(Y=1|E,X)$ and $E_i$ = metabolites 1-15 as numeric tertile entries. 
+
+ORs were pooled by random effect meta-analysis separately for cohort and case-control studies to assess design-specific effect differences. Overall OR random effects were calculated by pooling all 5 studies' fixed effects together. Overall effects were not calculated from pooling the separate cohort and case-control random effects studies together since the assumption is that cohort and case-control effects and variances should inherently be relatively equal. However, pooling the two studies' random effects together rather than all 5 studies simultaneously only increased variance by a minute amount of $\approx$ 0.1. All p-values were two-sided. Given the exploratory nature of our study p-values were not corrected for multiple comparisons. All statistical analyses and data visualizations were performed using R package "metafor" for meta-analysis and ggplot2.
+
+Markers with statistically significant ordinal trends (p<0.05) were further examined for associations of each tertile with gastric cancer risk comparing to the lowest tertile. 
+
+
+
+
 ```{r}
+# Meta analysis random effect where estrogen tertile is numeric 
 # random effect adjused for age
 country.df = list()
 model1.coef= list()
 
-for (j in 1:4){  # change to 1:5
+for (j in 1:5){  # change to 1:5
 country.df[[j]] = df %>% filter(origin==country_list[j]) %>% select(origin,case,t.estrogen_names,age,bmi,alcohol,smoking,relativegc,education)  
 model1.coef[[j]] = data.frame(origin=country_list[j],estrogen = c(estrogen_names),estimate=rep(NA,15), variance=rep(NA,15), lower = rep(NA,15), upper = rep(NA,15))
 
-if (j==1){ range=c(1,2,4:15)} else{ range=1:15  }
+if (j==3){ range=c(1,2,4:15)} else{ range=1:15  }
 
  for (k in range){
  model = summary(glm(as.formula(paste0("case", " ~ ", (paste(t.estrogen_names[k], "age", sep="+")))), data=country.df[[j]],  family=binomial(link="logit")))$coef
@@ -128,7 +624,7 @@ RE.model1.combined = bind_rows(meta.model1.coef.cohort,meta.model1.coef.casecont
 meta.model1.coef = data.frame(origin="Overall Random Effect",estrogen = estrogen_names,estimate=rep(NA,15), variance=rep(NA,15),lower = rep(NA,15), upper = rep(NA,15))
 # combined cohort and case control
 for (i in 1:15){
-data = RE.model1.combined %>%filter(estrogen==estrogen_names[i])
+data = model1.coef %>%filter(estrogen==estrogen_names[i])
 model = rma(yi=data$estimate,vi=data$variance,method="REML")   # random effect model meta analysis
 meta.model1.coef$estimate[i] = coef(model)
 meta.model1.coef$variance[i] = (model$se)^2
@@ -141,97 +637,35 @@ RE.model1$model = "Age (Baseline)"
 
 
 #########################################################################################################
-#Random effect adjusted for age and smoking
-country.df = list()
-model2.coef= list()
-for (j in 1:4){ # change to 1:5 to add korea snu
-country.df[[j]] = df %>% filter(origin==country_list[j]) %>% select(origin,case,t.estrogen_names,age,bmi,alcohol,smoking,relativegc,education)
-model2.coef[[j]] = data.frame(origin=country_list[j],estrogen = c(estrogen_names),estimate=rep(NA,15), variance=rep(NA,15), lower = rep(NA,15), upper = rep(NA,15))
-
-if (j==1){ range=c(1,2,4:15)} else{ range=1:15  }
-
- for (k in range){
- model = summary(glm(as.formula(paste0("case", " ~ ", (paste(t.estrogen_names[k], "age","smoking", sep="+")))), data=country.df[[j]],  family=binomial(link="logit")))$coef
- model2.coef[[j]]$estimate[k] = model[2,1]
- model2.coef[[j]]$variance[k] = (model[2,2])^2
- model2.coef[[j]]$lower[k] = model[2,1]-1.96*model[2,2]
- model2.coef[[j]]$upper[k] = model[2,1]+1.96*model[2,2]
- }
-}
-model2.coef = bind_rows(model2.coef) %>% mutate(variance = ifelse(variance>1000,NA,variance))
-
-meta.model2.coef.cohort = data.frame(origin="Cohort Random Effect",estrogen = estrogen_names,estimate=rep(NA,15), variance=rep(NA,15),lower = rep(NA,15), upper = rep(NA,15))
-# for cohort
-for (i in 1:15){
-data = model2.coef %>% filter(origin %in% c("Germany", "Korea (KMCC)","Iran")) %>%filter(estrogen==estrogen_names[i])
-model = rma(yi=data$estimate,vi=data$variance,method="REML")   # random effect model meta analysis
-meta.model2.coef.cohort$estimate[i] = coef(model)
-meta.model2.coef.cohort$variance[i] = (model$se)^2
-meta.model2.coef.cohort$lower[i] = meta.model2.coef.cohort$estimate[i] - 1.96*model$se
-meta.model2.coef.cohort$upper[i] = meta.model2.coef.cohort$estimate[i] + 1.96*model$se
-}
-
-meta.model2.coef.casecontrol = data.frame(origin="Case Control Random Effect",estrogen = estrogen_names,estimate=rep(NA,15), variance=rep(NA,15),lower = rep(NA,15), upper = rep(NA,15))
-# for case control
-for (i in 1:15){
-data = model2.coef %>% filter(origin %in% c("Japan", "Korea (SNU)")) %>%filter(estrogen==estrogen_names[i])
-model = rma(yi=data$estimate,vi=data$variance,method="REML")   # random effect model meta analysis
-meta.model2.coef.casecontrol$estimate[i] = coef(model)
-meta.model2.coef.casecontrol$variance[i] = (model$se)^2
-meta.model2.coef.casecontrol$lower[i] = meta.model2.coef.casecontrol$estimate[i] - 1.96*model$se
-meta.model2.coef.casecontrol$upper[i] = meta.model2.coef.casecontrol$estimate[i] + 1.96*model$se
-}
-
-
-RE.model2.combined = bind_rows(meta.model2.coef.cohort,meta.model2.coef.casecontrol)
-meta.model2.coef = data.frame(origin="Overall Random Effect",estrogen = estrogen_names,estimate=rep(NA,15), variance=rep(NA,15),lower = rep(NA,15), upper = rep(NA,15))
-# combined cohort and case control
-for (i in 1:15){
-data = RE.model2.combined %>%filter(estrogen==estrogen_names[i])
-model = rma(yi=data$estimate,vi=data$variance,method="REML")   # random effect model meta analysis
-meta.model2.coef$estimate[i] = coef(model)
-meta.model2.coef$variance[i] = (model$se)^2
-meta.model2.coef$lower[i] = meta.model2.coef$estimate[i] - 1.96*model$se
-meta.model2.coef$upper[i] = meta.model2.coef$estimate[i] + 1.96*model$se
-}
-
-RE.model2 = bind_rows(RE.model2.combined,meta.model2.coef)
-
-RE.model2$model = "Age and Smoking"
-
-
-#########################################################################################################
 # full model
 
 country.df = list()
 model3.coef= list()
-for (j in 1:4){ # change to 1:5 to add korea snu
-  
-
+for (j in 1:5){ 
 country.df[[j]] = df %>% filter(origin==country_list[j]) %>% select(origin,case,t.estrogen_names,age,bmi,alcohol,smoking,relativegc,education)
 model3.coef[[j]] = data.frame(origin=country_list[j],estrogen = c(estrogen_names),estimate=rep(NA,15), variance=rep(NA,15), lower = rep(NA,15), upper = rep(NA,15))
 
 
-if (j==1){ # for germany
+if (j==3){ # for germany
  for (k in c(1,2,4:15)){
-  model = summary(glm(as.formula(paste0("case", " ~ ", (paste(t.estrogen_names[k], "age","smoking","bmi","education","relativegc", sep="+")))), data=country.df[[j]],  family=binomial(link="logit")))$coef
+  model = summary(glm(as.formula(paste0("case", " ~ ", (paste(t.estrogen_names[k], "age","bmi", sep="+")))), data=country.df[[j]],  family=binomial(link="logit")))$coef
   
   model3.coef[[j]]$estimate[k] = model[2,1]
  model3.coef[[j]]$variance[k] = (model[2,2])^2
  model3.coef[[j]]$lower[k] = model[2,1]-1.96*model[2,2]
  model3.coef[[j]]$upper[k] = model[2,1]+1.96*model[2,2]
  }
-  } else if (j==2){ # for japan
+  } else if (j==5){ # for japan
   for (k in 1:15){
-  model = summary(glm(as.formula(paste0("case", " ~ ", (paste(t.estrogen_names[k], "age","smoking","bmi","relativegc", sep="+")))), data=country.df[[j]],  family=binomial(link="logit")))$coef
+  model = summary(glm(as.formula(paste0("case", " ~ ", (paste(t.estrogen_names[k], "age","bmi","relativegc", sep="+")))), data=country.df[[j]],  family=binomial(link="logit")))$coef
   
    model3.coef[[j]]$estimate[k] = model[2,1]
  model3.coef[[j]]$variance[k] = (model[2,2])^2
  model3.coef[[j]]$lower[k] = model[2,1]-1.96*model[2,2]
  model3.coef[[j]]$upper[k] = model[2,1]+1.96*model[2,2]
   }
- } else if (j==3){ # for korea (KMCC)
-  for (k in 1:15){
+ } else if (j==2){ # for korea (KMCC)
+ 	  for (k in 1:15){
   model = summary(glm(as.formula(paste0("case", " ~ ", (paste(t.estrogen_names[k], "age","smoking","bmi","education", sep="+")))), data=country.df[[j]],  family=binomial(link="logit")))$coef
   
    model3.coef[[j]]$estimate[k] = model[2,1]
@@ -239,16 +673,16 @@ if (j==1){ # for germany
  model3.coef[[j]]$lower[k] = model[2,1]-1.96*model[2,2]
  model3.coef[[j]]$upper[k] = model[2,1]+1.96*model[2,2]
   }
- } else if (j==4){ # for iran
+ } else if (j==1){ # for iran
   for (k in 1:15){
-  model = summary(glm(as.formula(paste0("case", " ~ ", (paste(t.estrogen_names[k], "age","smoking","bmi","education","relativegc", sep="+")))), data=country.df[[j]],  family=binomial(link="logit")))$coef
+  model = summary(glm(as.formula(paste0("case", " ~ ", (paste(t.estrogen_names[k], "age","bmi","education", sep="+")))), data=country.df[[j]],  family=binomial(link="logit")))$coef
  
    model3.coef[[j]]$estimate[k] = model[2,1]
  model3.coef[[j]]$variance[k] = (model[2,2])^2
  model3.coef[[j]]$lower[k] = model[2,1]-1.96*model[2,2]
  model3.coef[[j]]$upper[k] = model[2,1]+1.96*model[2,2]
    }
- } else if (j==5){ # for korea snu
+ } else if (j==4){ # for korea snu
   for (k in 1:15){
   model = summary(glm(as.formula(paste0("case", " ~ ", (paste(t.estrogen_names[k], "age","smoking","bmi","education","relativegc", sep="+")))), data=country.df[[j]],  family=binomial(link="logit")))$coef
   
@@ -258,7 +692,6 @@ if (j==1){ # for germany
  model3.coef[[j]]$upper[k] = model[2,1]+1.96*model[2,2]
   }
  }
-
  }
 
 model3.coef = bind_rows(model3.coef) %>% mutate(variance = ifelse(variance>1000,NA,variance))
@@ -290,7 +723,7 @@ RE.model3.combined = bind_rows(meta.model3.coef.cohort,meta.model3.coef.casecont
 meta.model3.coef = data.frame(origin="Overall Random Effect",estrogen = estrogen_names,estimate=rep(NA,15), variance=rep(NA,15),lower = rep(NA,15), upper = rep(NA,15))
 # combined cohort and case control
 for (i in 1:15){
-data = RE.model3.combined %>%filter(estrogen==estrogen_names[i])
+data = model3.coef %>%filter(estrogen==estrogen_names[i])
 model = rma(yi=data$estimate,vi=data$variance,method="REML")   # random effect model meta analysis
 meta.model3.coef$estimate[i] = coef(model)
 meta.model3.coef$variance[i] = (model$se)^2
@@ -299,59 +732,38 @@ meta.model3.coef$upper[i] = meta.model3.coef$estimate[i] + 1.96*model$se
 }
 
 RE.model3 = bind_rows(RE.model3.combined,meta.model3.coef)
-RE.model3$model = "Age, Smoking, BMI, Education, and Family History"
+RE.model3$model = "Full Adjustment"
 
 
 #########################################################################################################
 # combinig all data
 
-RE.model = bind_rows(RE.model1,RE.model2, RE.model3) %>% 
+RE.model = bind_rows(RE.model1, RE.model3) %>% 
   rename(Estrogen  = estrogen) %>%
   full_join(estrogen_names_df,by="Estrogen") %>%
   mutate(Estrogen = factor(as.factor(Estrogen), levels=estrogen_names),
          Nomenclature = factor(as.factor(Nomenclature), levels=estrogen_names_long2),
-         model = factor(as.factor(model), levels= rev(c("Age (Baseline)", "Age and Smoking", "Age, Smoking, BMI, Education, and Family History"))),
+         model = factor(as.factor(model), levels= rev(c("Age (Baseline)", "Full Adjustment"))),
          origin = factor(as.factor(origin), levels = rev(c("Cohort Random Effect", "Case Control Random Effect", "Overall Random Effect"))))
 # exponentiate
 RE.model[,3:6] = sapply(RE.model[,3:6], exp)
 
+```
 
-#########################################################################################################
-# comparing overall random effects per model
-ggplot(data = RE.model %>% filter(origin=="Overall Random Effect"),aes(x = model,y = estimate))+
-    geom_pointrange(aes(ymin = lower, ymax = upper, col=model),size=0.75)+
-  geom_errorbar(aes(ymin=lower, ymax=upper,col=model),width=0.75,cex=1)+   
-      ylab("Odds Ratio (95% CI)")+
-      scale_y_log10(breaks = c(0.25,0.5,1,1.5,2,3,5,7,9), labels=c(0.25,0.5,1,1.5,2,3,5,7,9))+
-      theme_blank()+
-  scale_color_manual(values = c("dodgerblue2","lightskyblue3","cyan3"))+
-  geom_hline(aes(fill=model),yintercept =1, linetype="dotted",size=1.5)+
-    facet_wrap(~ Nomenclature,strip.position="left",nrow=15,scales = "free_y") +
-          xlab("")+ 
-    theme(plot.title=element_text(size=16,face="bold"),
-        axis.text.y=element_blank(),
-        axis.ticks.y=element_blank(),
-        axis.text.x=element_text(face="bold"),
-        axis.title=element_text(size=12,face="bold"),
-        strip.text.y = element_text(hjust=0,vjust = 1,angle=180,face="bold"),
-        legend.title=element_blank(),
-        legend.position="bottom")+
-    coord_flip()+
-  ggtitle("Comparison of Pooled Random Effects Across Different Models")+
-   guides(color = guide_legend(reverse = TRUE))
-
+```{r,fig.height=7,fig.cap="Study specific pooled random effect logistic model"}
 #########################################################################################################
 plot1 = ggplot(data = RE.model %>% filter(model == "Age (Baseline)"), aes(x = origin,y = estimate))+
-    geom_pointrange(aes(ymin = lower, ymax = upper, col=origin),size=0.75)+
-  geom_errorbar(aes(ymin=lower, ymax=upper,col=origin),width=0.75,cex=1)+   
+	  #geom_hline(yintercept =1, linetype="dotted",size=1.5)+
+	 geom_hline(yintercept =1)+
+    geom_pointrange(aes(ymin = lower, ymax = upper, col=origin),size=0.5)+
+  geom_errorbar(aes(ymin=lower, ymax=upper,col=origin),width=0.5,cex=0.75)+   
       ylab("Odds Ratio (95% CI)")+
        scale_y_log10(breaks = c(0.25,0.5,1,1.5,2,3,5,7,9), labels=c(0.25,0.5,1,1.5,2,3,5,7,9))+
       theme_blank()+
- scale_color_manual(labels = c("Overall Random Effect","Case Control Random Effect", "Cohort Random Effect"),values = c("dodgerblue2","lightskyblue3","cyan3"))+
-  geom_hline(yintercept =1, linetype="dotted",size=1.5)+
-    facet_wrap(~ Nomenclature,strip.position="left",nrow=15,scales = "free_y") +
+ scale_color_grey(labels = c("Overall Random Effect","Case Control Random Effect", "Cohort Random Effect"),end=0.7)+
+    facet_wrap(~ Estrogen,strip.position="left",nrow=15,scales = "free_y") +
           xlab("")+ 
-    theme(plot.title=element_text(size=16,face="bold",hjust=0.5),
+    theme(plot.title=element_text(size=16,face="bold",hjust=0.4),
         axis.text.y=element_blank(),
         axis.ticks.y=element_blank(),
         axis.text.x=element_text(face="bold"),
@@ -364,41 +776,19 @@ plot1 = ggplot(data = RE.model %>% filter(model == "Age (Baseline)"), aes(x = or
    guides(color = guide_legend(reverse = TRUE))
 
 
-plot2 = ggplot(data = RE.model %>% filter(model == "Age and Smoking"), aes(x = origin,y = estimate))+
-    geom_pointrange(aes(ymin = lower, ymax = upper, col=origin),size=0.75)+
-  geom_errorbar(aes(ymin=lower, ymax=upper,col=origin),width=0.75,cex=1)+   
-      ylab("Odds Ratio (95% CI)")+
-       scale_y_log10(breaks = c(0.25,0.5,1,1.5,2,3,5,7,9), labels=c(0.25,0.5,1,1.5,2,3,5,7,9))+
-      theme_blank()+
- scale_color_manual(labels = c("Overall Random Effect","Case Control Random Effect", "Cohort Random Effect"),values = c("dodgerblue2","lightskyblue3","cyan3"))+
-  geom_hline(yintercept =1, linetype="dotted",size=1.5)+
-    facet_wrap(~ Nomenclature,strip.position="left",nrow=15,scales = "free_y") +
-          xlab("")+ 
-    theme(plot.title=element_text(size=16,face="bold",hjust=0.5),
-        axis.text.y=element_blank(),
-        axis.ticks.y=element_blank(),
-        axis.text.x=element_text(face="bold"),
-        axis.title=element_text(size=12,face="bold"),
-        strip.text.y = element_blank(),
-        legend.title=element_blank(),
-        legend.position="bottom")+
-    coord_flip()+
-  ggtitle("Age and Smoking")+
-   guides(color = guide_legend(reverse = TRUE))
 
-
-plot3 = ggplot(data = RE.model %>% filter(model == "Age, Smoking, BMI, Education, and Family History"), aes(x = origin,y = estimate))+
-    geom_pointrange(aes(ymin = lower, ymax = upper, col=origin),size=0.75)+
-  geom_errorbar(aes(ymin=lower, ymax=upper,col=origin),width=0.75,cex=1)+   
+plot3 = ggplot(data = RE.model %>% filter(model == "Full Adjustment"), aes(x = origin,y = estimate))+
+		geom_hline(yintercept =1)+
+    geom_pointrange(aes(ymin = lower, ymax = upper, col=origin),size=0.5)+
+  geom_errorbar(aes(ymin=lower, ymax=upper,col=origin),width=0.5,cex=0.75)+   
       ylab("Odds Ratio (95% CI)")+
-        scale_y_log10(breaks = c(0.25,0.5,1,1.5,2,3,5,7,9), labels=c(0.25,0.5,1,1.5,2,3,5,7,9))+
+        scale_y_log10(breaks = c(0.25,0.5,1,1.5,2,3,5), labels=c(0.25,0.5,1,1.5,2,3,5))+
       theme_blank()+
- scale_color_manual(labels = c("Overall Random Effect","Case Control Random Effect", "Cohort Random Effect"),values = c("dodgerblue2","lightskyblue3","cyan3"))+
-  geom_hline(yintercept =1, linetype="dotted",size=1.5)+
-    facet_wrap(~ Nomenclature,strip.position="left",nrow=15,scales = "free_y") +
+ scale_color_grey(labels = c("Overall Random Effect","Case Control Random Effect", "Cohort Random Effect"),end=0.7)+
+  #geom_hline(yintercept =1, linetype="dotted",size=1.5)+
+    facet_wrap(~ Estrogen,strip.position="left",nrow=15,scales = "free_y") +
           xlab("")+ 
-    theme(plot.title=element_text(size=16,face="bold"),
-        
+    theme(plot.title=element_text(size=16,face="bold",hjust=0.4),
         axis.text.y=element_blank(),
         axis.ticks.y=element_blank(),
       axis.line = element_line(colour = "darkblue", 
@@ -408,22 +798,47 @@ plot3 = ggplot(data = RE.model %>% filter(model == "Age, Smoking, BMI, Education
         strip.text.y = element_blank(),
         legend.title=element_blank(),
         legend.position="bottom")+
-     
     coord_flip()+
-  ggtitle("Age, Smoking, BMI, Education, and Family History")+
+  ggtitle("Full Adjustment")+
    guides(color = guide_legend(reverse = TRUE))
 
-ggarrange(plot1,plot2,plot3, ncol=3, widths = c(0.5,0.5,0.5), legend="bottom", common.legend=TRUE)
+ggarrange(plot1,plot3, nrow=1,ncol=2, widths = c(1,0.5), legend="bottom", common.legend=TRUE)
+
+```
+
+\newpage
+
+# Additional Analysis
+
+```{r,out.height = "350px"}
+knitr::include_graphics('Graphs and Tables/compare_estrogen_to_studies.png')
+```
+Standardized estrogen concentrations agreed with Moore et al., 2016 and Sampson et al., 2016 which used similar datasets of the same demographis (Comparison table found in Other Analysis section below).
+
+
+
+```{r,fig.height=4,fig.width=4,fig.cap="Pooled Wilcoxon-Mann-Whitney tests for cases vs. controls"}
+boxplot.df = df %>% select(estrogen_names,status) %>% gather(estrogen,value,estrogen_names) %>%
+		mutate(estrogen = factor(as.factor(estrogen),levels=rev(estrogen_names)),
+			status = factor(as.factor(status), levels=c("Case","Control"))) %>%
+	filter(!(is.na(status)))
+
+blank = data.frame(x=0,y=c(10e-5,7*max(boxplot.df$value,na.rm=TRUE)))
+
+ggplot(boxplot.df,aes(estrogen,value))+
+		geom_boxplot(color="black",aes(fill=status))+
+		scale_fill_grey(start=0.6)+
+scale_y_log10("Concentration (pmol/mg creatinine)",breaks = scales::trans_breaks("log10", function(x) 10^x),labels = scales::trans_format("log10", scales::math_format(10^.x))) +
+	theme_bw()+
+	xlab("")+
+	coord_flip()+
+	geom_blank(data = blank, aes(x = x, y = y,fill=NULL))+
+	stat_compare_means(aes(group = status), method="wilcox.test", label= "p.signif",hide.ns=TRUE)+
+	theme(legend.position=c(0.12,0.1),
+		  legend.title=element_blank(),
+		 axis.text.x =  element_text(size=10,face="bold"),
+    	axis.text.y =  element_text(size=10,face="bold"))
 
 ```
 
 
-```{r}
-
-```
-
-
-
-
-
-    
