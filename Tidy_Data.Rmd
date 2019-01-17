@@ -123,7 +123,10 @@ snu.replicates.creatinine = snu.replicates.creatinine2 %>% group_by(customer.id)
 # together
 snu.replicates = bind_cols(snu.replicates.estrogen,snu.replicates.creatinine)
 
-write.csv(bind_cols(snu.replicates.estrogen2,snu.replicates.creatinine2), file = "data/qc_data/snu.qc.csv",row.names=FALSE, na="")
+snu.qc = bind_cols(snu.replicates.estrogen2,snu.replicates.creatinine2)
+snu.qc[,estrogen_names] = sweep(snu.qc[,estrogen_names],snu.qc[,"creatinine"],MARGIN=1,"/")  
+
+write.csv(snu.qc, file = "data/qc_data/snu.qc.csv",row.names=FALSE, na="")
 ```
 
 
@@ -133,13 +136,31 @@ write.csv(bind_cols(snu.replicates.estrogen2,snu.replicates.creatinine2), file =
 #estrogen controls
 control.estrogen = df.batch %>% 
 	filter((str_detect(customer.id, regex("control",ignore_case=TRUE)))) %>% 
-	select(-injection) %>% filter(batch.num != 8)
+	filter(batch.num != 8)
 
 # creatinine controls
 control.creatinine= df.creatinine%>% 
 	filter((str_detect(customer.id, regex("control",ignore_case=TRUE))))
 
-write.csv(full_join(control.estrogen,control.creatinine,by=c("customer.id")), file = "data/qc_data/control.qc.csv",row.names=FALSE, na="")
+control.qc = full_join(control.estrogen,control.creatinine,by=c("customer.id")) %>%   
+	# assigns qc labels to ids
+	mutate(ID = c("A","D","A","D", # batch 1
+                    "B","B","D","D", # batch 2
+                    "E","B","B","E", # batch 3
+                    "D","E","E","D",  # batch 4
+                    "E","E","B","B", # batch 5
+                    "B","D","B","D", # batch 6
+                    "A","A","B","B", # batch 7 (batch 8 is duplicated)
+                    "B","B","E","E",  # batch 9
+		            "E","E","D","D", # batch 10
+		            "D","D","B","B", # batch 11
+ 					"B","B","A","A", # batch 12
+ 					"B","B","E","E", # batch 13
+					"E","E","D","D", # batch 14
+ 					"D","D","B","B", # batch 15
+ 					"B","B","A","A")) # batch 16
+control.qc[,estrogen_names] = sweep(control.qc[,estrogen_names],control.qc[,"creatinine"],MARGIN=1,"/") 
+write.csv(control.qc, file = "data/qc_data/control.qc.csv",row.names=FALSE, na="")
 ```
 
 
