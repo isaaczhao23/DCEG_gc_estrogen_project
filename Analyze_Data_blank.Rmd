@@ -1,0 +1,655 @@
+---
+title: |
+  | \vspace{5cm} \LARGE{Study}
+  | \vspace{2cm} \Large{Statistical Analysis and Results}
+author: "Isaac Zhao"
+date: "01/17/19 Version 4"
+output:
+  pdf_document:
+    fig_caption: yes
+  html_document: default
+header-includes:
+- \usepackage{graphicx}
+- \usepackage{float}
+- \usepackage{booktabs}
+---
+
+
+
+```{r setup, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(
+	fig.path='figure/graphics-', cache.path='cache/graphics-', # sets folder for saving graphics
+    fig.align='center',external=TRUE, warning=FALSE, # alligns figures to center, no print warnings
+    fig.pos='H', table.placement='H', fig.height=12.5,  # makes tables and graphs in correct order with text
+		fig.width=12.5,
+	echo=FALSE, message=FALSE, cache=TRUE, #don't print code or messages, saves in cache
+	warn.conflicts=F,  # don't print warnings 
+	tidy=TRUE,tidy.opts=list(width.cutoff=60)) # makes printing code not run off page
+				a4width<- 8.3
+				a4height<- 9
+```
+
+
+```{r}
+setwd("~/Desktop/project")
+source("Supplemental/check_packages.R")
+source("Supplemental/custom_cormatrix.R")  # use to load correlation matrix function
+check_packages(c("ggthemes","optimx","metafor","stringr","Hmisc","ggpubr","scales","readxl","sas7bdat","readstata13","gridExtra","RColorBrewer","sjPlot","readr","stargazer","knitr", "grid","lme4","ggrepel","tidyr","networkD3","kableExtra","dplyr","ggplot2"))
+load("data/cleaned_data.RDA")
+```
+
+\newpage
+
+```{r}
+table = as.data.frame(read_xlsx("Supplemental/study_demographics_chart/demographics_read_in.xlsx"))
+colnames(table) = c("",rep(c("Case","Control"),6))
+
+
+kable(table, "latex", caption = "Demographics Table", booktabs = T) %>%
+kable_styling(latex_options = c("scale_down","hold_position"),
+	bootstrap_options = "condensed", full_width = F, position="center") %>%
+  add_header_above(c(" ", "Study 1" = 2, "Study 2" = 2, "Study 3" = 2,"Study 4"=2,"Study 5"=2,"Overall"=2)) %>%
+  add_header_above(c(" ", "Cohort" = 6, "Case Control" = 4," "=2)) %>%	
+	footnote(c("NA = Data not available"))
+#
+```
+
+
+```{r, out.height = "250px"}
+knitr::include_graphics('Graphs and Tables/sankey.png')
+####
+```
+
+```{r, fig.height=12.5, fig.width=15"}
+custom_cormatrix(df %>% select(variables),log.transform=TRUE,size=0.8)
+```
+
+```{r,results='asis'}
+# counts total NF across all batches
+a = df%>% select(batch.num,variables) %>%
+	gather(variable,concentration,variables) %>% group_by(batch.num) %>%summarize('Total NF (n)'=sum(is.na(concentration)))
+
+# counts total number of cases and controls per batch
+b = df %>% select(batch.num,status) %>%  group_by(batch.num) %>%summarize('Cases (n)'=sum(status=="Case",na.rm=TRUE), 'Controls (n)' =sum(status=="Control",na.rm=TRUE))
+
+# puts together total NF, counts of cases and controls, and labels study per batch
+df %>% group_by(batch.num) %>% summarize(n=n()) %>% full_join(a,by="batch.num") %>% full_join(b,by="batch.num")%>%
+	rename(Batch = batch.num) %>% 
+	mutate(Study = c("Study 1 and 2",rep("Study 2",2), "Study 3", rep("Study 4",4), rep("Study 5",8))) %>%
+	
+stargazer(title = "Table of batch information", header = FALSE,
+rownames = FALSE, type = "latex", single.row = TRUE, no.space = TRUE, digits=NA,
+summary = FALSE, table.placement = "H",notes=c("Note: Sample sizes are after QC sample removal"))
+
+
+```
+
+```{r,results='asis'}
+# view number of NF=missing data
+missing = sapply(df %>% select(variables, creatinine), function(x) sum(is.na(x))) %>% as.data.frame()
+missing$variable = rownames(missing)
+missing = missing %>% dplyr::rename(num_missing = ".") %>%
+mutate(pct_missing = round(100*num_missing/nrow(df), 1)) %>%
+select(variable, num_missing, pct_missing) %>% 
+	rename('NF (n)' = num_missing, 'NF (%)' = pct_missing, Variable = variable)
+
+stargazer(missing,title = "Table of values not found (NF)", header = FALSE,
+rownames = FALSE, type = "latex", single.row = TRUE, no.space = TRUE, digits=NA,
+summary = FALSE, table.placement = "H")
+```
+
+
+```{r, fig.height=1, fig.width=4}
+
+graph.df = missing  %>%rename(pct_missing = 'NF (%)') %>% mutate(pct_missing = pct_missing/100)
+
+ggplot(graph.df , aes(pct_missing))+
+	geom_density(fill="grey75")+
+    scale_x_continuous("",breaks=seq(0,0.3,0.05),labels=scales::percent_format(accuracy = 1))+
+	theme_classic()+
+	geom_vline(xintercept=median(graph.df$pct_missing), linetype="dashed")+
+	theme(axis.text.y=element_blank(),axis.ticks.y=element_blank(),
+    	axis.text.x =  element_text(size=7.5,face="bold"))
+#
+```
+
+```{r,results='asis'}
+qc.df1 = read_csv("data/qc_data/control.qc.csv") %>% 
+	as.data.frame() %>%
+  gather(variable,Concentration,variables) %>%
+  mutate(batch.num = as.factor(batch.num), ID = as.factor(ID))
+
+qc_calculation = function(data){
+   data %>%   group_by(variable) %>%
+	# log transformed data
+	mutate(Concentration.l = log(Concentration)) %>%
+  summarize(
+  	# between subject variance 
+  	s2_between_subject = VarCorr(lmer(Concentration ~ 1+ (1|ID) + (1|batch.num)))$ID[1],  
+  	# between batch variance
+    s2_between_batch = VarCorr(lmer(Concentration ~ 1+ (1|ID) + (1|batch.num)))$batch.num[1] ,   
+  	# within subject variance
+    s2_within_subject = (attr(VarCorr(lmer(Concentration ~ 1+ (1|ID) + (1|batch.num))), "sc"))^2,
+  	# between subject variance log
+  	s2_between_subject.l = VarCorr(lmer(Concentration.l ~ 1+ (1|ID) + (1|batch.num)))$ID[1],  
+  	# between batch variance log
+    s2_between_batch.l = VarCorr(lmer(Concentration.l ~ 1+ (1|ID) + (1|batch.num)))$batch.num[1] ,   
+  	# within subject variance log
+    s2_within_subject.l = (attr(VarCorr(lmer(Concentration.l ~ 1+ (1|ID) + (1|batch.num))),"sc"))^2 ,
+  	# mean
+    mean_concentration = mean(Concentration,na.rm=TRUE)) %>%
+  mutate(
+  	# computes ICC
+  	ICC = 100*(s2_between_subject/(s2_between_subject+s2_within_subject+s2_between_batch)),
+  	# computes ICC log
+  	ICC.l = 100*(s2_between_subject.l/(s2_between_subject.l+s2_within_subject.l+s2_between_batch.l)),
+  	# computes CV
+    CV = 100*(sqrt(s2_within_subject + s2_between_batch)/mean_concentration),
+  	# computes CV log
+  	CV.l = 100*(exp(sqrt(s2_within_subject.l))-1)) %>%
+	arrange(factor(variable,levels=variables)) %>%
+	select(variable, s2_between_subject,s2_between_batch,s2_within_subject,mean_concentration,ICC,CV,
+		s2_between_subject.l,s2_between_batch.l,s2_within_subject.l,ICC.l,CV.l)
+}
+
+qc.stats = qc_calculation(qc.df1)
+
+```
+
+```{r, fig.height=3}
+
+graph.df = qc.stats %>%  rename('ICC (log)' = ICC.l, 'CV (log)'=CV.l) %>% gather(var1,var2,c(CV,ICC,'ICC (log)','CV (log)')) %>% mutate(var2 = var2/100)
+graph.df2 = graph.df %>% group_by(var1) %>% summarize(median = median(var2))
+
+ggplot(graph.df, aes(var2))+
+	geom_density(aes(y=..scaled..),fill="grey75")+
+    scale_x_continuous("",labels=scales::percent_format(accuracy = 1))+
+	theme_classic()+
+	ylab("Density")+
+	geom_vline(data=graph.df2,aes(xintercept=median), linetype="dashed")+
+		facet_wrap(~var1,ncol=2,nrow=2,scales="free")+
+	theme(axis.text.y=element_blank(),axis.ticks.y=element_blank(),
+    	strip.text.x = element_text(size = 15,face="bold"), 
+    	axis.text.x =  element_text(size=10,face="bold"))
+
+```
+
+
+```{r, fig.height=8.5}
+qc.df3 = qc.df1 %>% group_by() %>%mutate(batch.num = as.numeric(as.character(batch.num)))
+
+median.df = qc.df1 %>% group_by(ID,variable) %>% summarize(med = median(Concentration,na.rm=TRUE)) %>%
+		group_by() %>%mutate(variable = factor(as.factor(variable), levels=variables))
+	
+qc.df3 = qc.df3 %>% full_join(median.df,by=c("ID","variable")) %>%
+	mutate(Concentration=log(Concentration), med=log(med)) %>%
+		mutate(variable = factor(as.factor(variable), levels=variables))
+
+for (i in 1:nrow(qc.df3)){
+	if (!(is.na(qc.df3$Concentration[i])) & qc.df3$Concentration[i] >=3) { 
+		qc.df3$Concentration[i] = 3   
+	}else if (!(is.na(qc.df3$Concentration[i])) & qc.df3$Concentration[i] <= -3){ 
+		qc.df3$Concentration[i] = -3   
+	}else if (is.na(qc.df3$Concentration[i]) & qc.df3$ID[i]=="Sample 1" ) { qc.df3$Concentration[i] =-4   
+	}else if (is.na(qc.df3$Concentration[i]) & qc.df3$ID[i]=="Sample 2" ) { qc.df3$Concentration[i] =-4.1   
+	}else if (is.na(qc.df3$Concentration[i]) & qc.df3$ID[i]=="Sample 3" ) { qc.df3$Concentration[i] =-4.2   
+	}else if (is.na(qc.df3$Concentration[i]) & qc.df3$ID[i]=="Sample 4" ) { qc.df3$Concentration[i] =-4.3   
+}
+}
+
+
+ggplot(qc.df3 %>% filter(Concentration >= -3),aes(x=batch.num,y=Concentration),  group = row.names(qc.df3)) +
+  	geom_vline(xintercept=1:16,alpha=0.5,color="grey50",linetype="dotted")+
+	geom_point(aes(color=ID), size=1.5,alpha=0.5)+
+		geom_linerange(aes(color=ID,ymin=med,ymax=Concentration),alpha=0.5)+
+		geom_point(data=qc.df3%>% filter(Concentration<=-4),aes(color=ID), size=1,alpha=0.7,shape=2)+
+  theme_classic() +  
+  scale_color_manual(values=c("Red","Green","Blue","Purple")) +	
+	scale_y_continuous("concentration log scale",breaks=seq(-4,3),limits=c(-5,3), labels=c("NF","<=-3",seq(-2,2),">=3"))+
+	scale_x_continuous("Batch #",limits=c(1,16),breaks=seq(1,16))+
+  	  geom_hline(aes(yintercept=med,color=ID), linetype="dashed",alpha=0.7)+
+  facet_wrap(~ variable,scales="free",ncol=5) +
+  theme(legend.position="bottom",
+  	  strip.text.x = element_text(size =12.5,face="bold"), 
+        axis.text.y =  element_text(size=10, face="bold"))
+
+
+```
+
+
+
+```{r,results='asis'}
+qc.df2= read_csv("data/qc_data2.csv") %>% 
+	as.data.frame() %>% arrange(customer.id)%>%
+  rename(ID = customer.id) %>%
+  gather(variable,Concentration,variables) %>%
+  mutate(batch.num = as.factor(batch.num), ID = as.factor(ID))%>%
+  group_by(variable)
+
+qc.stats = qc_calculation(qc.df2)
+
+```
+
+```{r, fig.height=3}
+
+graph.df = qc.stats %>%  rename('ICC (log)' = ICC.l, 'CV (log)'=CV.l) %>% gather(var1,var2,c(CV,ICC,'ICC (log)','CV (log)')) %>% mutate(var2 = var2/100)
+graph.df2 = graph.df %>% group_by(var1) %>% summarize(median = median(var2))
+
+ggplot(graph.df, aes(var2))+
+	geom_density(aes(y=..scaled..),fill="grey75")+
+    scale_x_continuous("",labels=scales::percent_format(accuracy = 1))+
+	theme_classic()+
+	ylab("Density")+
+	geom_vline(data=graph.df2,aes(xintercept=median), linetype="dashed")+
+		facet_wrap(~var1,ncol=2,nrow=2,scales="free")+
+	theme(axis.text.y=element_blank(),axis.ticks.y=element_blank(),
+    	strip.text.x = element_text(size = 15,face="bold"), 
+    	axis.text.x =  element_text(size=10,face="bold"))
+```
+
+```{r, fig.height=8.5}
+ggplot(qc.df2 %>% group_by() %>%mutate(variable = factor(as.factor(variable), levels=variables)),aes(x=ID,y=Concentration)) +
+  geom_jitter(aes(color=batch.num,shape=batch.num),size=3,alpha=0.7, width=0.2,height=0,show_guide = TRUE) +
+  scale_shape_manual(values=1:nlevels(qc.df2$batch.num))+
+  theme_classic() +  
+	geom_vline(xintercept=1:19,color="grey50",linetype="dotted" )+
+  scale_y_log10(" concentration")	+
+  xlab("ID") + 
+  facet_wrap(~ variable,scales="free",ncol=5) +
+  theme(strip.text.x = element_text(size =12.5,face="bold"), 
+  	    axis.text.x=element_blank(),
+        axis.text.y =  element_text(size=10, face="bold"))
+
+```
+
+
+
+```{r, fig.height=3}
+graph.df = qc.stats %>%  rename('ICC (log)' = ICC.l, 'CV (log)'=CV.l) %>% gather(var1,var2,c(CV,ICC,'ICC (log)','CV (log)')) %>% mutate(var2 = var2/100)
+graph.df2 = graph.df %>% group_by(var1) %>% summarize(median = median(var2))
+
+ggplot(graph.df, aes(var2))+
+	geom_density(aes(y=..scaled..),fill="grey75")+
+    scale_x_continuous("",labels=scales::percent_format(accuracy = 1))+
+	theme_classic()+
+	ylab("Density")+
+	geom_vline(data=graph.df2,aes(xintercept=median), linetype="dashed")+
+		facet_wrap(~var1,ncol=2,nrow=2,scales="free")+
+	theme(axis.text.y=element_blank(),axis.ticks.y=element_blank(),
+    	strip.text.x = element_text(size = 15,face="bold"), 
+    	axis.text.x =  element_text(size=10,face="bold"))
+```
+
+
+```{r,fig.height=5}
+data = df %>% select(status,age, bmi, education, alcohol, smoking, origin)
+
+p1 = ggplot(data, aes(status,age))+
+	geom_boxplot(fill="grey75") +
+	stat_compare_means(method="t.test",na.rm=TRUE,paired=FALSE,label.x=0.75)+
+	theme_classic()+
+	xlab("") +
+		theme(axis.text.x =  element_text(size=10,face="bold"))
+
+p2 = ggplot(data, aes(status,bmi))+
+	geom_boxplot(fill="grey75") +
+	stat_compare_means(method="wilcox.test",na.rm=TRUE,paired=FALSE,label.x=0.75)+
+	theme_classic()+
+	xlab("")+
+		theme(axis.text.x =  element_text(size=10,face="bold"))
+
+p3 = ggplot(data %>% filter(education != "9999") %>% filter(!(is.na(education))), aes(status))+
+	geom_bar(aes(fill=education),position="fill",color="black") +
+	scale_fill_grey("",start=0.6, labels=c("Never","Ever") )+
+	theme_classic()+
+	scale_y_continuous("Education",labels=scales::percent)+
+	xlab("")+
+		theme(axis.text.x =  element_text(size=10,face="bold"))
+
+p4 = ggplot(data %>% filter(alcohol != "9999") %>% filter(!(is.na(alcohol))), aes(status))+
+	geom_bar(aes(fill=alcohol),position="fill",color="black") +
+	scale_fill_grey("",start=0.6, labels=c("Never","Ever") )+
+	theme_classic()+
+	scale_y_continuous("Alcohol",labels=scales::percent)+
+	xlab("")+
+		theme(axis.text.x =  element_text(size=10,face="bold"))
+
+p5 = ggplot(data %>% filter(smoking != "9999") %>% filter(!(is.na(smoking))), aes(status))+
+	geom_bar(aes(fill=smoking),position="fill",color="black") +
+	scale_fill_grey("",start=0.6, labels=c("Never","Ever") )+
+	theme_classic()+
+	scale_y_continuous("Smoking",labels=scales::percent)+
+	xlab("")+
+		theme(axis.text.x =  element_text(size=10,face="bold"))
+
+
+ggarrange(p1,p2,p3,p4,p5,nrow=1,ncol=6,widths=rep(0.5,6), common.legend=TRUE,legend=c("bottom"))
+```
+
+
+```{r}
+###################################
+boxplot.df = df %>% select(variables, origin,status) %>% filter(!(is.na(status))) %>%
+  gather(variable,Concentration,1:15)%>% 
+  mutate(variable = factor(as.factor(variable),levels = variables),status=as.factor(status),
+  	origin = factor(as.factor(origin),levels=country_list))
+
+max.df = boxplot.df %>% group_by(variable) %>% summarize(max = max(Concentration,na.rm=TRUE)) %>% 
+  mutate(variable = factor(as.factor(variable), levels=variables))
+
+blank = data.frame(variable = rep(max.df$variable,2), x=0,y=c(0-max$max/15,7*max.df$max)) %>% arrange(variable)
+
+boxplot.output = ggplot(boxplot.df, aes(x=origin,y=Concentration, fill=status)) +
+  geom_boxplot(color="black") +
+		scale_fill_grey(start=0.6)+
+	  scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),labels = scales::trans_format("log10", scales::math_format(10^.x))) +
+  theme_bw() +
+	facet_wrap(~ variable, scales="free",ncol=5) +
+  stat_compare_means(aes(group = status), method="wilcox.test", label= "p.signif",hide.ns=TRUE) +
+  xlab("")+
+  ylab("Concentration")+
+	  geom_blank(data = blank, aes(x = x, y = y,fill=NULL))+
+    theme(
+    	strip.text.x = element_text(size = 10,face="bold"), 
+    	axis.text.x =  element_text(size=7,face="bold",angle=23,hjust=1), 
+    	axis.text.y =  element_text(size=7,face="bold"), 
+    	legend.title=element_blank(),
+    	legend.position="bottom")
+
+ggsave(file.path("Graphs and Tables", "boxplot.output.png"),
+             boxplot.output, width=7.5, height=7)
+
+knitr::include_graphics('Graphs and Tables/boxplot.output.png')
+```
+
+
+```{r,results='asis'}
+table = list()
+for (i in 1:length(country_list)){
+table[[i]] = df %>% filter(status=="Control") %>% select(origin,variables) %>% 
+	gather(variable,Concentration,variables) %>% 
+	filter(origin==country_list[i])%>%
+	group_by(origin,variable) %>%
+	summarize(var1 = paste0(round(median(Concentration,na.rm=TRUE),2), " (",
+		round(quantile(Concentration, probs=1/3, na.rm=TRUE, names=FALSE),2),", ",
+		round(quantile(Concentration, probs=2/3, na.rm=TRUE, names=FALSE),2),
+		")")) %>%
+	arrange(factor(origin, levels = country_list))
+		
+}
+table = bind_cols(table) %>% group_by()%>%
+	select(-contains("origin")) %>% arrange(factor(variable,levels=variables)) %>%
+	select(-contains("variable"))
+
+colnames(table) = rep("Median (Tertile)",5)
+
+
+kable(table, "latex", caption = "concentration median and tertile cutpoint", booktabs = T) %>%
+	add_header_above(c("","Study 1", "Study 2","Study 3","Study 4","Study 5")) %>%
+  add_header_above(c(" ", "Cohort" = 3, "Case Control" = 2)) %>%
+kable_styling(latex_options = c("scale_down","hold_position")) %>%
+	footnote(c("Tertile (33% and 66% quantiles) determined by control subjects","Units are standardized"))
+```
+
+
+```{r}
+# meta analysis random effect
+# random effect adjused for age
+country.df = list()
+model1.coef= list()
+
+for (j in 1:5){  # change to 1:5
+country.df[[j]] = df %>% filter(origin==country_list[j]) %>% select(origin,case,t.variables,age,bmi,alcohol,smoking,relativegc,education)  
+model1.coef[[j]] = data.frame(origin=country_list[j],variable = c(variables),estimate=rep(NA,15), variance=rep(NA,15), lower = rep(NA,15), upper = rep(NA,15))
+
+if (j==3){ range=c(1,2,4:15)} else{ range=1:15  }
+
+ for (k in range){
+ model = summary(glm(as.formula(paste0("case", " ~ ", (paste(t.variable[k], "age", sep="+")))), data=country.df[[j]],  family=binomial(link="logit")))$coef
+ model1.coef[[j]]$estimate[k] = model[2,1]
+ model1.coef[[j]]$variance[k] = (model[2,2])^2
+ model1.coef[[j]]$lower[k] = model[2,1]-1.96*model[2,2]
+ model1.coef[[j]]$upper[k] = model[2,1]+1.96*model[2,2]
+ }
+}
+model1.coef = bind_rows(model1.coef) %>% mutate(variance = ifelse(variance>1000,NA,variance))
+
+meta.model1.coef.cohort = data.frame(origin="Cohort Random Effect",variable = variables,estimate=rep(NA,15), variance=rep(NA,15),lower = rep(NA,15), upper = rep(NA,15))
+# for cohort
+for (i in 1:15){
+data = model1.coef %>% filter(origin %in% c("Study 1", "Study 2","Study 3")) %>%filter(variable==variables[i])
+model = rma(yi=data$estimate,vi=data$variance,method="REML")   # random effect model meta analysis
+meta.model1.coef.cohort$estimate[i] = coef(model)
+meta.model1.coef.cohort$variance[i] = (model$se)^2
+meta.model1.coef.cohort$lower[i] = meta.model1.coef.cohort$estimate[i] - 1.96*model$se
+meta.model1.coef.cohort$upper[i] = meta.model1.coef.cohort$estimate[i] + 1.96*model$se
+}
+
+meta.model1.coef.casecontrol = data.frame(origin="Case Control Random Effect",variable = variables,estimate=rep(NA,15), variance=rep(NA,15),lower = rep(NA,15), upper = rep(NA,15))
+# for case control
+for (i in 1:15){
+data = model1.coef %>% filter(origin %in% c("Study 4", "Study 5")) %>%filter(variable==variables[i])
+model = rma(yi=data$estimate,vi=data$variance,method="REML")   # random effect model meta analysis
+meta.model1.coef.casecontrol$estimate[i] = coef(model)
+meta.model1.coef.casecontrol$variance[i] = (model$se)^2
+meta.model1.coef.casecontrol$lower[i] = meta.model1.coef.casecontrol$estimate[i] - 1.96*model$se
+meta.model1.coef.casecontrol$upper[i] = meta.model1.coef.casecontrol$estimate[i] + 1.96*model$se
+}
+
+
+RE.model1.combined = bind_rows(meta.model1.coef.cohort,meta.model1.coef.casecontrol)
+meta.model1.coef = data.frame(origin="Overall Random Effect",variable = variables,estimate=rep(NA,15), variance=rep(NA,15),lower = rep(NA,15), upper = rep(NA,15))
+# combined cohort and case control
+for (i in 1:15){
+data = model1.coef %>%filter(variable==variables[i])
+model = rma(yi=data$estimate,vi=data$variance,method="REML")   # random effect model meta analysis
+meta.model1.coef$estimate[i] = coef(model)
+meta.model1.coef$variance[i] = (model$se)^2
+meta.model1.coef$lower[i] = meta.model1.coef$estimate[i] - 1.96*model$se
+meta.model1.coef$upper[i] = meta.model1.coef$estimate[i] + 1.96*model$se
+}
+
+RE.model1 = bind_rows(RE.model1.combined,meta.model1.coef)
+RE.model1$model = "Age (Baseline)"
+
+
+#########################################################################################################
+# full model
+
+country.df = list()
+model3.coef= list()
+for (j in 1:5){ 
+country.df[[j]] = df %>% filter(origin==country_list[j]) %>% select(origin,case,t.variables,age,bmi,alcohol,smoking,relativegc,education)
+model3.coef[[j]] = data.frame(origin=country_list[j],variable = c(variables),estimate=rep(NA,15), variance=rep(NA,15), lower = rep(NA,15), upper = rep(NA,15))
+
+
+if (j==3){ 
+ for (k in c(1,2,4:15)){
+  model = summary(glm(as.formula(paste0("case", " ~ ", (paste(t.variables[k], "age","bmi", sep="+")))), data=country.df[[j]],  family=binomial(link="logit")))$coef
+  
+  model3.coef[[j]]$estimate[k] = model[2,1]
+ model3.coef[[j]]$variance[k] = (model[2,2])^2
+ model3.coef[[j]]$lower[k] = model[2,1]-1.96*model[2,2]
+ model3.coef[[j]]$upper[k] = model[2,1]+1.96*model[2,2]
+ }
+  } else if (j==5){
+  for (k in 1:15){
+  model = summary(glm(as.formula(paste0("case", " ~ ", (paste(t.variables[k], "age","bmi","relativegc", sep="+")))), data=country.df[[j]],  family=binomial(link="logit")))$coef
+  
+   model3.coef[[j]]$estimate[k] = model[2,1]
+ model3.coef[[j]]$variance[k] = (model[2,2])^2
+ model3.coef[[j]]$lower[k] = model[2,1]-1.96*model[2,2]
+ model3.coef[[j]]$upper[k] = model[2,1]+1.96*model[2,2]
+  }
+ } else if (j==2){ 
+ 	  for (k in 1:15){
+  model = summary(glm(as.formula(paste0("case", " ~ ", (paste(t.variables[k], "age","smoking","bmi","education", sep="+")))), data=country.df[[j]],  family=binomial(link="logit")))$coef
+  
+   model3.coef[[j]]$estimate[k] = model[2,1]
+ model3.coef[[j]]$variance[k] = (model[2,2])^2
+ model3.coef[[j]]$lower[k] = model[2,1]-1.96*model[2,2]
+ model3.coef[[j]]$upper[k] = model[2,1]+1.96*model[2,2]
+  }
+ } else if (j==1){ 
+  for (k in 1:15){
+  model = summary(glm(as.formula(paste0("case", " ~ ", (paste(t.variables[k], "age","bmi","education", sep="+")))), data=country.df[[j]],  family=binomial(link="logit")))$coef
+ 
+   model3.coef[[j]]$estimate[k] = model[2,1]
+ model3.coef[[j]]$variance[k] = (model[2,2])^2
+ model3.coef[[j]]$lower[k] = model[2,1]-1.96*model[2,2]
+ model3.coef[[j]]$upper[k] = model[2,1]+1.96*model[2,2]
+   }
+ } else if (j==4){ 
+  for (k in 1:15){
+  model = summary(glm(as.formula(paste0("case", " ~ ", (paste(t.variables[k], "age","smoking","bmi","education","relativegc", sep="+")))), data=country.df[[j]],  family=binomial(link="logit")))$coef
+  
+   model3.coef[[j]]$estimate[k] = model[2,1]
+ model3.coef[[j]]$variance[k] = (model[2,2])^2
+ model3.coef[[j]]$lower[k] = model[2,1]-1.96*model[2,2]
+ model3.coef[[j]]$upper[k] = model[2,1]+1.96*model[2,2]
+  }
+ }
+ }
+
+model3.coef = bind_rows(model3.coef) %>% mutate(variance = ifelse(variance>1000,NA,variance))
+
+meta.model3.coef.cohort = data.frame(origin="Cohort Random Effect",variable = variables,estimate=rep(NA,15), variance=rep(NA,15),lower = rep(NA,15), upper = rep(NA,15))
+# for cohort
+for (i in 1:15){
+data = model3.coef %>% filter(origin %in% c("Study 1", "Study 2","Study 3")) %>%filter(variable==variables[i])
+model = rma(yi=data$estimate,vi=data$variance,method="REML")   # random effect model meta analysis
+meta.model3.coef.cohort$estimate[i] = coef(model)
+meta.model3.coef.cohort$variance[i] = (model$se)^2
+meta.model3.coef.cohort$lower[i] = meta.model3.coef.cohort$estimate[i] - 1.96*model$se
+meta.model3.coef.cohort$upper[i] = meta.model3.coef.cohort$estimate[i] + 1.96*model$se
+}
+
+meta.model3.coef.casecontrol = data.frame(origin="Case Control Random Effect",variable = variables,estimate=rep(NA,15), variance=rep(NA,15),lower = rep(NA,15), upper = rep(NA,15))
+# for case control
+for (i in 1:15){
+data = model3.coef %>% filter(origin %in% c("Study 4", "Study 5")) %>%filter(variable==variables[i])
+model = rma(yi=data$estimate,vi=data$variance,method="REML")   # random effect model meta analysis
+meta.model3.coef.casecontrol$estimate[i] = coef(model)
+meta.model3.coef.casecontrol$variance[i] = (model$se)^2
+meta.model3.coef.casecontrol$lower[i] = meta.model3.coef.casecontrol$estimate[i] - 1.96*model$se
+meta.model3.coef.casecontrol$upper[i] = meta.model3.coef.casecontrol$estimate[i] + 1.96*model$se
+}
+
+
+RE.model3.combined = bind_rows(meta.model3.coef.cohort,meta.model3.coef.casecontrol)
+meta.model3.coef = data.frame(origin="Overall Random Effect",variable = variables,estimate=rep(NA,15), variance=rep(NA,15),lower = rep(NA,15), upper = rep(NA,15))
+# combined cohort and case control
+for (i in 1:15){
+data = model3.coef %>%filter(variable==variables[i])
+model = rma(yi=data$estimate,vi=data$variance,method="REML")   # random effect model meta analysis
+meta.model3.coef$estimate[i] = coef(model)
+meta.model3.coef$variance[i] = (model$se)^2
+meta.model3.coef$lower[i] = meta.model3.coef$estimate[i] - 1.96*model$se
+meta.model3.coef$upper[i] = meta.model3.coef$estimate[i] + 1.96*model$se
+}
+
+RE.model3 = bind_rows(RE.model3.combined,meta.model3.coef)
+RE.model3$model = "Full Adjustment"
+
+
+#########################################################################################################
+# combinig all data
+
+RE.model = bind_rows(RE.model1, RE.model3) %>% 
+  rename(variable  = variable) %>%
+  full_join(variables_df,by="variable") %>%
+  mutate(variable = factor(as.factor(variable), levels=variables),
+         Nomenclature = factor(as.factor(Nomenclature), levels=variables_long2),
+         model = factor(as.factor(model), levels= rev(c("Age (Baseline)", "Full Adjustment"))),
+         origin = factor(as.factor(origin), levels = rev(c("Cohort Random Effect", "Case Control Random Effect", "Overall Random Effect"))))
+# exponentiate
+RE.model[,3:6] = sapply(RE.model[,3:6], exp)
+
+```
+
+```{r,fig.height=7}
+#########################################################################################################
+plot1 = ggplot(data = RE.model %>% filter(model == "Age (Baseline)"), aes(x = origin,y = estimate))+
+	  #geom_hline(yintercept =1, linetype="dotted",size=1.5)+
+	 geom_hline(yintercept =1)+
+    geom_pointrange(aes(ymin = lower, ymax = upper, col=origin),size=0.5)+
+  geom_errorbar(aes(ymin=lower, ymax=upper,col=origin),width=0.5,cex=0.75)+   
+      ylab("Odds Ratio (95% CI)")+
+       scale_y_log10(breaks = c(0.25,0.5,1,1.5,2,3,5,7,9), labels=c(0.25,0.5,1,1.5,2,3,5,7,9))+
+      theme_blank()+
+ scale_color_grey(labels = c("Overall Random Effect","Case Control Random Effect", "Cohort Random Effect"),end=0.7)+
+    facet_wrap(~ variable,strip.position="left",nrow=15,scales = "free_y") +
+          xlab("")+ 
+    theme(plot.title=element_text(size=16,face="bold",hjust=0.4),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.text.x=element_text(face="bold"),
+        axis.title=element_text(size=12,face="bold"),
+        strip.text.y = element_text(hjust=0,vjust = 1,angle=180,face="bold"),
+        legend.title=element_blank(),
+        legend.position="bottom")+
+    coord_flip()+
+  ggtitle("Age (Baseline)")+
+   guides(color = guide_legend(reverse = TRUE))
+
+
+
+plot3 = ggplot(data = RE.model %>% filter(model == "Full Adjustment"), aes(x = origin,y = estimate))+
+		geom_hline(yintercept =1)+
+    geom_pointrange(aes(ymin = lower, ymax = upper, col=origin),size=0.5)+
+  geom_errorbar(aes(ymin=lower, ymax=upper,col=origin),width=0.5,cex=0.75)+   
+      ylab("Odds Ratio (95% CI)")+
+        scale_y_log10(breaks = c(0.25,0.5,1,1.5,2,3,5), labels=c(0.25,0.5,1,1.5,2,3,5))+
+      theme_blank()+
+ scale_color_grey(labels = c("Overall Random Effect","Case Control Random Effect", "Cohort Random Effect"),end=0.7)+
+  #geom_hline(yintercept =1, linetype="dotted",size=1.5)+
+    facet_wrap(~ variable,strip.position="left",nrow=15,scales = "free_y") +
+          xlab("")+ 
+    theme(plot.title=element_text(size=16,face="bold",hjust=0.4),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+      axis.line = element_line(colour = "darkblue", 
+                      size = 1, linetype = "solid"),
+        axis.text.x=element_text(face="bold"),
+        axis.title=element_text(size=12,face="bold"),
+        strip.text.y = element_blank(),
+        legend.title=element_blank(),
+        legend.position="bottom")+
+    coord_flip()+
+  ggtitle("Full Adjustment")+
+   guides(color = guide_legend(reverse = TRUE))
+
+ggarrange(plot1,plot3, nrow=1,ncol=2, widths = c(1,0.5), legend="bottom", common.legend=TRUE)
+
+```
+
+# Additional Analysis
+
+
+
+```{r,fig.height=3.5,fig.width=4.5}
+boxplot.df = df %>% select(variables,status) %>% gather(variable,value,variables) %>%
+		mutate(variable = factor(as.factor(variable),levels=rev(variables)),
+			status = factor(as.factor(status), levels=c("Case","Control"))) %>%
+	filter(!(is.na(status)))
+
+blank = data.frame(x=0,y=c(10e-5,7*max(boxplot.df$value,na.rm=TRUE)))
+
+ggplot(boxplot.df,aes(variable,value))+
+		geom_boxplot(color="black",aes(fill=status))+
+		scale_fill_grey(start=0.6)+
+scale_y_log10("Concentration",breaks = scales::trans_breaks("log10", function(x) 10^x),labels = scales::trans_format("log10", scales::math_format(10^.x))) +
+	theme_bw()+
+	xlab("")+
+	coord_flip()+
+	geom_blank(data = blank, aes(x = x, y = y,fill=NULL))+
+	stat_compare_means(aes(group = status), method="wilcox.test", label= "p.signif",hide.ns=TRUE)+
+	theme(legend.position=c(0.12,0.1),
+		  legend.title=element_blank(),
+		 axis.text.x =  element_text(size=10,face="bold"),
+    	axis.text.y =  element_text(size=10,face="bold"))
+
+```
+
+
